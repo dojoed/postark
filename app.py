@@ -3,7 +3,7 @@ from openai import OpenAI
 import base64
 import os
 from dotenv import load_dotenv
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
 
 # --- SETUP ---
@@ -12,18 +12,16 @@ app = Flask(__name__)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # --- HELPERS ---
-def encode_image(file):
-    return base64.b64encode(file.read()).decode("utf-8")
+def encode_image(file, filename):
+    data = base64.b64encode(file.read()).decode("utf-8")
+    path = f"/tmp/{filename}"
+    with open(path, "wb") as f:
+        f.write(base64.b64decode(data))
+    return data, path
 
 
 def parse_sections(text):
-    sections = {
-        "overview": "",
-        "analysis": "",
-        "story": "",
-        "timeline": ""
-    }
-
+    sections = {"overview": "", "analysis": "", "story": "", "timeline": ""}
     current = None
 
     for line in text.split("\n"):
@@ -48,17 +46,29 @@ def parse_sections(text):
     return sections
 
 
-def generate_pdf(data):
-    file_path = "artifact.pdf"
+def generate_pdf(data, front_path, back_path):
+    file_path = "/tmp/artifact.pdf"
 
     doc = SimpleDocTemplate(file_path)
     styles = getSampleStyleSheet()
-
     content = []
 
     content.append(Paragraph("<b>PostArk Artifact Report</b>", styles["Title"]))
     content.append(Spacer(1, 12))
 
+    # Images
+    content.append(Paragraph("<b>Postcard Images</b>", styles["Heading2"]))
+    content.append(Spacer(1, 8))
+
+    if os.path.exists(front_path):
+        content.append(Image(front_path, width=250, height=150))
+        content.append(Spacer(1, 8))
+
+    if os.path.exists(back_path):
+        content.append(Image(back_path, width=250, height=150))
+        content.append(Spacer(1, 12))
+
+    # Sections
     for key, title in [
         ("overview", "Overview"),
         ("analysis", "Detailed Analysis"),
@@ -66,12 +76,14 @@ def generate_pdf(data):
         ("timeline", "Timeline"),
     ]:
         content.append(Paragraph(f"<b>{title}</b>", styles["Heading2"]))
-        content.append(Spacer(1, 8))
+        content.append(Spacer(1, 6))
         content.append(Paragraph(data.get(key, ""), styles["BodyText"]))
-        content.append(Spacer(1, 12))
+        content.append(Spacer(1, 10))
+
+    # Link back
+    content.append(Paragraph("<b>View Online:</b> https://your-app-name.onrender.com", styles["Normal"]))
 
     doc.build(content)
-
     return file_path
 
 
@@ -79,6 +91,8 @@ def generate_pdf(data):
 @app.route("/", methods=["GET", "POST"])
 def index():
     result = None
+    front_path = None
+    back_path = None
 
     if request.method == "POST":
         try:
@@ -88,13 +102,13 @@ def index():
             if not front or not back:
                 return render_template("index.html", result={"error": "Upload both images."})
 
-            front_img = encode_image(front)
-            back_img = encode_image(back)
+            front_img, front_path = encode_image(front, "front.jpg")
+            back_img, back_path = encode_image(back, "back.jpg")
 
             prompt = """
 You are an expert historical archivist analyzing a vintage postcard.
 
-Return your response in the following labeled sections:
+Return sections:
 
 OVERVIEW:
 Short summary
@@ -103,7 +117,7 @@ ANALYSIS:
 Sender, receiver, date, location, message summary
 
 STORY:
-Reconstruct narrative
+Narrative
 
 TIMELINE:
 Bullet timeline
@@ -129,7 +143,7 @@ Bullet timeline
         except Exception as e:
             result = {"error": str(e)}
 
-    return render_template("index.html", result=result)
+    return render_template("index.html", result=result, front_path=front_path, back_path=back_path)
 
 
 @app.route("/download", methods=["POST"])
@@ -141,7 +155,10 @@ def download():
         "timeline": request.form.get("timeline"),
     }
 
-    pdf_path = generate_pdf(data)
+    front_path = request.form.get("front_path")
+    back_path = request.form.get("back_path")
+
+    pdf_path = generate_pdf(data, front_path, back_path)
     return send_file(pdf_path, as_attachment=True)
 
 
