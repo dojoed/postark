@@ -6,7 +6,6 @@ import base64
 import json
 from serpapi import GoogleSearch
 from PIL import Image
-import time
 
 # --- CONFIG ---
 st.set_page_config(page_title="PostArk", page_icon="📬", layout="wide")
@@ -14,43 +13,53 @@ st.set_page_config(page_title="PostArk", page_icon="📬", layout="wide")
 # --- STYLE ---
 st.markdown("""
 <style>
-
-/* Left logo panel */
-.logo-section {
-    text-align: center;
-    padding-top: 40px;
-}
-
-/* Cards */
-.card {
-    padding: 20px;
-    border-radius: 12px;
-    background: #f8f8f8;
-    border: 1px solid #e5e5e5;
-    margin-bottom: 15px;
-}
-
-/* Labels */
-.label { font-size: 12px; color: #777; }
-.value { font-size: 18px; font-weight: 600; }
-
-/* Story */
-.story {
-    font-size: 18px;
-    line-height: 1.9;
-    padding: 28px;
+[data-testid="stAppViewContainer"] {
     background: #f4f1ea;
-    border-radius: 12px;
-    border: 1px solid #ddd;
-    color: #111;
 }
 
-/* Tabs */
-button[data-baseweb="tab"] {
-    font-size: 18px !important;
-    padding: 12px 22px !important;
+.brand { text-align:center; padding-top:40px; }
+.brand img { width:150px; }
+
+.results { max-width:1000px; margin:40px auto; }
+
+.card {
+    background:white;
+    border:1px solid #ddd;
+    border-radius:10px;
+    padding:20px;
+    margin-bottom:20px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.05);
 }
 
+.info-card {
+    background:white;
+    border:1px solid #ddd;
+    border-radius:10px;
+    padding:15px;
+    text-align:center;
+}
+
+.label {
+    font-size:12px;
+    color:#777;
+    text-transform:uppercase;
+}
+
+.value {
+    font-size:18px;
+    font-weight:600;
+}
+
+.conf {
+    font-size:11px;
+    color:#aaa;
+}
+
+/* STORY */
+.story {
+    font-size:18px;
+    line-height:1.8;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -69,172 +78,211 @@ def crop_stamp(file):
 
 def safe_parse(text):
     try:
-        return json.loads(text.replace("```json","").replace("```","").strip())
+        cleaned = text.replace("```json","").replace("```","").strip()
+        return json.loads(cleaned)
     except:
-        return {}
+        return None
 
 def web_search(query):
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": os.getenv("SERPAPI_API_KEY"),
-        "num": 3
-    }
-    results = GoogleSearch(params).get_dict()
-    return [r.get("snippet","") for r in results.get("organic_results", [])]
+    try:
+        params = {
+            "engine": "google",
+            "q": query,
+            "api_key": os.getenv("SERPAPI_API_KEY"),
+            "num": 5
+        }
+        results = GoogleSearch(params).get_dict()
+        return [r.get("snippet","") for r in results.get("organic_results", [])]
+    except:
+        return []
 
 # --- LAYOUT ---
-left_col, right_col = st.columns([1, 4])
+left, right = st.columns([1,2])
 
-# --- LEFT: LOGO ---
-with left_col:
-    st.markdown('<div class="logo-section">', unsafe_allow_html=True)
-    st.image("logo.png", width=180)
-    st.markdown("## PostArk")
-    st.caption("Preserving history, one postcard at a time")
+with left:
+    st.markdown('<div class="brand">', unsafe_allow_html=True)
+    st.image("logo.png")
+    st.markdown("### PostArk")
+    st.markdown("Preserving history through postcards.")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- RIGHT: APP ---
-with right_col:
-
+with right:
     st.subheader("Upload Postcard")
 
-    col1, col2 = st.columns(2)
+    c1, c2 = st.columns(2)
 
-    with col1:
+    with c1:
         front_file = st.file_uploader("Front Image", type=["jpg","png"])
 
-    with col2:
+    with c2:
         back_file = st.file_uploader("Back Image", type=["jpg","png"])
 
-    # --- PREVIEW ---
     if front_file or back_file:
-        st.markdown("### Preview")
+        p1, p2 = st.columns(2)
+        if front_file:
+            p1.image(front_file, use_container_width=True)
+        if back_file:
+            p2.image(back_file, use_container_width=True)
 
-        col1, col2 = st.columns(2)
+    run = st.button("🔍 Analyze Postcard")
 
-        with col1:
-            if front_file:
-                st.image(front_file, use_container_width=True)
+# --- RESULTS ---
+if run and front_file and back_file:
 
-        with col2:
-            if back_file:
-                st.image(back_file, use_container_width=True)
+    progress = st.progress(0)
+    status = st.empty()
 
-    # --- ANALYZE ---
-    if st.button("🔍 Analyze Postcard") and front_file and back_file:
+    front_img = encode_image(front_file)
+    back_img = encode_image(back_file)
 
-        progress = st.progress(0)
-        status = st.empty()
+    try:
+        # EXTRACTION (RESTORED STRONG PROMPT)
+        status.write("📖 Extracting...")
+        progress.progress(20)
 
-        front_img = encode_image(front_file)
-        back_img = encode_image(back_file)
+        vision_prompt = """
+        Extract postcard data as JSON:
 
-        try:
-            # STEP 1
-            status.write("📖 Extracting postcard details...")
-            progress.progress(20)
+        {
+          "sender": "",
+          "receiver": "",
+          "location_sent_from": "",
+          "location_sent_to": "",
+          "date": "",
+          "full_transcription": "",
+          "confidence": {
+            "sender": 0.0,
+            "receiver": 0.0,
+            "location": 0.0,
+            "date": 0.0
+          }
+        }
+        """
 
-            vision = client.responses.create(
-                model="gpt-4.1-mini",
-                input=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": "Extract postcard data as JSON"},
-                        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_img}"},
-                        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_img}"}
-                    ]
-                }]
-            )
+        vision = client.responses.create(
+            model="gpt-4.1-mini",
+            input=[{
+                "role":"user",
+                "content":[
+                    {"type":"input_text","text":vision_prompt},
+                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{front_img}"},
+                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{back_img}"}
+                ]
+            }]
+        )
 
-            raw_text = vision.output[0].content[0].text
-            data = safe_parse(raw_text)
+        raw_text = vision.output[0].content[0].text
+        data = safe_parse(raw_text)
 
-            if not data:
-                st.error("Failed to parse postcard data.")
-                st.text(raw_text)
-                st.stop()
+        if not data:
+            data = {
+                "sender": "Unknown",
+                "receiver": "Unknown",
+                "location_sent_from": "",
+                "location_sent_to": "",
+                "date": "",
+                "full_transcription": raw_text,
+                "confidence": {}
+            }
 
-            # STEP 2
-            status.write("📮 Analyzing stamp...")
-            progress.progress(40)
-
-            stamp_image = crop_stamp(back_file)
-
-            # STEP 3
-            status.write("🌐 Running research...")
-            progress.progress(65)
-
-            research_results = {}
-            for person in [data.get("sender"), data.get("receiver")]:
-                if person:
-                    research_results[person] = web_search(person)
-
-            # STEP 4
-            status.write("🧠 Writing story...")
-            progress.progress(85)
-
-            narrative = client.responses.create(
-                model="gpt-4.1-mini",
-                input=f"""
-                Write a historically grounded narrative.
-                Do not invent facts.
-
-                Data:
-                {data}
-                """
-            )
-
-            story = narrative.output[0].content[0].text
-
-            progress.progress(100)
-            status.write("✅ Complete")
-
-            time.sleep(0.3)
-
-        except Exception as e:
-            st.error(f"Error during analysis: {e}")
-            st.stop()
-
-        st.divider()
-
-        # --- TABS ---
-        tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Stamp", "Story", "Analysis"])
-
-        # OVERVIEW
-        with tab1:
-            cols = st.columns(4)
-
-            def block(label, value):
-                return f"<div class='card'><div class='label'>{label}</div><div class='value'>{value}</div></div>"
-
-            cols[0].markdown(block("Sender", data.get("sender","—")), unsafe_allow_html=True)
-            cols[1].markdown(block("Receiver", data.get("receiver","—")), unsafe_allow_html=True)
-            cols[2].markdown(block("From", data.get("location_sent_from","—")), unsafe_allow_html=True)
-            cols[3].markdown(block("Date", data.get("date","—")), unsafe_allow_html=True)
-
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
-            st.markdown("### Message")
-            st.write(data.get("full_transcription",""))
-            st.markdown("</div>", unsafe_allow_html=True)
+        conf = data.get("confidence", {})
 
         # STAMP
-        with tab2:
-            col1, col2 = st.columns([1,2])
-            with col1:
-                st.image(stamp_image, width=200)
-            with col2:
-                st.markdown("<div class='card'>Stamp identified from postcard.</div>", unsafe_allow_html=True)
+        status.write("📮 Stamp...")
+        progress.progress(40)
 
-        # STORY
-        with tab3:
-            st.markdown(f"<div class='story'>{story}</div>", unsafe_allow_html=True)
+        stamp_image = crop_stamp(back_file)
 
-        # ANALYSIS
-        with tab4:
-            for person, snippets in research_results.items():
-                st.markdown("<div class='card'>", unsafe_allow_html=True)
-                st.markdown(f"**{person}**")
-                for s in snippets:
-                    st.write(f"- {s}")
-                st.markdown("</div>", unsafe_allow_html=True)
+        stamp_text = client.responses.create(
+            model="gpt-4.1-mini",
+            input=[{
+                "role":"user",
+                "content":[
+                    {"type":"input_text","text":"Identify stamp details"},
+                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{back_img}"}
+                ]
+            }]
+        ).output[0].content[0].text
+
+        # TIMELINE (FIXED)
+        status.write("📅 Timeline...")
+        progress.progress(60)
+
+        timeline = client.responses.create(
+            model="gpt-4.1-mini",
+            input=f"""
+            Provide structured historical context:
+
+            Date: {data.get('date')}
+            Location: {data.get('location_sent_from')}
+
+            Keep it grounded and specific.
+            """
+        ).output[0].content[0].text
+
+        # STORY (FIXED)
+        status.write("🧠 Story...")
+        progress.progress(90)
+
+        story = client.responses.create(
+            model="gpt-4.1-mini",
+            input=f"""
+            Write a grounded historical narrative using ONLY:
+
+            {data}
+            {timeline}
+
+            Do not invent facts.
+            """
+        ).output[0].content[0].text
+
+        progress.progress(100)
+        status.write("✅ Done")
+
+    except Exception as e:
+        st.error(str(e))
+        st.stop()
+
+    # --- OUTPUT ---
+    st.markdown('<div class="results">', unsafe_allow_html=True)
+
+    tab1, tab2, tab3, tab4 = st.tabs(["Overview","Stamp","Timeline","Story"])
+
+    # OVERVIEW (FIXED)
+    with tab1:
+        cols = st.columns(4)
+
+        def card(label, value, c):
+            return f"""
+            <div class='info-card'>
+                <div class='label'>{label}</div>
+                <div class='value'>{value}</div>
+                <div class='conf'>confidence: {round(c,2)}</div>
+            </div>
+            """
+
+        cols[0].markdown(card("Sender", data.get("sender","—"), conf.get("sender",0)), unsafe_allow_html=True)
+        cols[1].markdown(card("Receiver", data.get("receiver","—"), conf.get("receiver",0)), unsafe_allow_html=True)
+        cols[2].markdown(card("From", data.get("location_sent_from","—"), conf.get("location",0)), unsafe_allow_html=True)
+        cols[3].markdown(card("Date", data.get("date","—"), conf.get("date",0)), unsafe_allow_html=True)
+
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown("### Message")
+        st.write(data.get("full_transcription",""))
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # STAMP
+    with tab2:
+        col1, col2 = st.columns([1,2])
+        col1.image(stamp_image, width=150)
+        col2.markdown(f"<div class='card'>{stamp_text}</div>", unsafe_allow_html=True)
+
+    # TIMELINE
+    with tab3:
+        st.markdown(f"<div class='card'>{timeline}</div>", unsafe_allow_html=True)
+
+    # STORY
+    with tab4:
+        st.markdown(f"<div class='card story'>{story}</div>", unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
