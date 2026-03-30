@@ -7,7 +7,10 @@
         body {
             font-family: Arial;
             text-align: center;
-            background: #f4f4f4;
+
+            /* ✅ FIXED: warm beige background */
+            background: #f5f0e6;
+
             padding: 40px;
         }
 
@@ -19,9 +22,9 @@
             margin: auto;
         }
 
-        /* ✅ LOGO (FIXED SIZE, NOT HUGE) */
+        /* LOGO */
         .logo {
-            width: 180px;
+            width: 200px;
             height: auto;
             margin-bottom: 15px;
         }
@@ -47,12 +50,11 @@
             margin-top: 20px;
         }
 
-        /* ✅ IMAGE DISPLAY */
+        /* IMAGE DISPLAY */
         .image-row {
             display: flex;
             justify-content: space-between;
             margin-top: 20px;
-            gap: 10px;
         }
 
         .image-row img {
@@ -61,7 +63,7 @@
             cursor: pointer;
         }
 
-        /* ✅ MODAL */
+        /* MODAL */
         #modal {
             display: none;
             position: fixed;
@@ -80,10 +82,11 @@
             margin: 5% auto;
         }
 
-        /* ✅ SIMPLE LOADER (NON-DESTRUCTIVE) */
+        /* LOADER */
         #loader {
             display: none;
-            margin-top: 20px;
+            margin-top: 15px;
+            color: #555;
         }
     </style>
 
@@ -119,7 +122,6 @@
 
 <div class="container">
 
-    <!-- LOGO -->
     <img src="/static/logo.png" class="logo">
 
     <h1>PostArk</h1>
@@ -139,7 +141,6 @@
         <button type="submit">Analyze Artifact</button>
     </form>
 
-    <!-- ✅ LOADER -->
     <div id="loader">
         <p><i>Analyzing... please wait</i></p>
     </div>
@@ -149,7 +150,6 @@
             <p style="color:red;">{{ result.error }}</p>
         {% else %}
 
-        <!-- ✅ IMAGES AFTER ANALYSIS -->
         <div class="image-row">
             <img src="{{ front_path }}" onclick="openModal(this.src)">
             <img src="{{ back_path }}" onclick="openModal(this.src)">
@@ -175,7 +175,6 @@
             <p>{{ result.timeline }}</p>
         </div>
 
-        <!-- DOWNLOAD -->
         <form method="POST" action="/download">
             <input type="hidden" name="overview" value="{{ result.overview }}">
             <input type="hidden" name="analysis" value="{{ result.analysis }}">
@@ -192,7 +191,6 @@
 
 </div>
 
-<!-- MODAL -->
 <div id="modal" onclick="closeModal()">
     <img id="modalImg">
 </div>
