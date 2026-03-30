@@ -1,8 +1,10 @@
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, send_file
 from openai import OpenAI
 import base64
 import os
 from dotenv import load_dotenv
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 # --- SETUP ---
 load_dotenv()
@@ -22,28 +24,55 @@ def parse_sections(text):
         "timeline": ""
     }
 
-    current_section = None
+    current = None
 
     for line in text.split("\n"):
-        line_lower = line.lower()
+        l = line.lower()
 
-        if "overview" in line_lower:
-            current_section = "overview"
+        if "overview" in l:
+            current = "overview"
             continue
-        elif "analysis" in line_lower:
-            current_section = "analysis"
+        elif "analysis" in l:
+            current = "analysis"
             continue
-        elif "story" in line_lower:
-            current_section = "story"
+        elif "story" in l:
+            current = "story"
             continue
-        elif "timeline" in line_lower:
-            current_section = "timeline"
+        elif "timeline" in l:
+            current = "timeline"
             continue
 
-        if current_section:
-            sections[current_section] += line + "\n"
+        if current:
+            sections[current] += line + "\n"
 
     return sections
+
+
+def generate_pdf(data):
+    file_path = "artifact.pdf"
+
+    doc = SimpleDocTemplate(file_path)
+    styles = getSampleStyleSheet()
+
+    content = []
+
+    content.append(Paragraph("<b>PostArk Artifact Report</b>", styles["Title"]))
+    content.append(Spacer(1, 12))
+
+    for key, title in [
+        ("overview", "Overview"),
+        ("analysis", "Detailed Analysis"),
+        ("story", "Reconstructed Story"),
+        ("timeline", "Timeline"),
+    ]:
+        content.append(Paragraph(f"<b>{title}</b>", styles["Heading2"]))
+        content.append(Spacer(1, 8))
+        content.append(Paragraph(data.get(key, ""), styles["BodyText"]))
+        content.append(Spacer(1, 12))
+
+    doc.build(content)
+
+    return file_path
 
 
 # --- ROUTES ---
@@ -57,7 +86,7 @@ def index():
             back = request.files.get("back")
 
             if not front or not back:
-                return render_template("index.html", result={"error": "Please upload both images."})
+                return render_template("index.html", result={"error": "Upload both images."})
 
             front_img = encode_image(front)
             back_img = encode_image(back)
@@ -68,23 +97,16 @@ You are an expert historical archivist analyzing a vintage postcard.
 Return your response in the following labeled sections:
 
 OVERVIEW:
-- Short summary of the postcard
+Short summary
 
 ANALYSIS:
-- Sender (if visible)
-- Receiver (if visible)
-- Date (or best estimate)
-- Location (origin and/or destination)
-- Key visual details
-- Message summary
+Sender, receiver, date, location, message summary
 
 STORY:
-- Reconstruct a plausible narrative of the people and context
+Reconstruct narrative
 
 TIMELINE:
-- Bullet points of key inferred events (date-based if possible)
-
-Be specific, thoughtful, and historically aware.
+Bullet timeline
 """
 
             response = client.responses.create(
@@ -99,8 +121,8 @@ Be specific, thoughtful, and historically aware.
                 }]
             )
 
-            raw_text = response.output[0].content[0].text
-            parsed = parse_sections(raw_text)
+            raw = response.output[0].content[0].text
+            parsed = parse_sections(raw)
 
             result = parsed
 
@@ -108,6 +130,19 @@ Be specific, thoughtful, and historically aware.
             result = {"error": str(e)}
 
     return render_template("index.html", result=result)
+
+
+@app.route("/download", methods=["POST"])
+def download():
+    data = {
+        "overview": request.form.get("overview"),
+        "analysis": request.form.get("analysis"),
+        "story": request.form.get("story"),
+        "timeline": request.form.get("timeline"),
+    }
+
+    pdf_path = generate_pdf(data)
+    return send_file(pdf_path, as_attachment=True)
 
 
 # --- RUN ---
