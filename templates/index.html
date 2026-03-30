@@ -1,57 +1,185 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>PostArk</title>
+
     <style>
         body {
-            font-family: Georgia, serif;
+            margin: 0;
+            font-family: "Georgia", serif;
             background: #f4f1ea;
-            padding: 40px;
-            text-align: center;
+            color: #2f2a24;
         }
 
-        .card {
-            background: white;
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* LEFT SIDE */
+        .left {
+            width: 35%;
+            background: #e8e2d6;
+            padding: 40px;
+            box-sizing: border-box;
+            border-right: 2px solid #d6cbb5;
+        }
+
+        .logo {
+            width: 100%;
+            height: 120px;
+            background: linear-gradient(90deg, #d4c4a8, #bfa77a);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            letter-spacing: 2px;
+            font-weight: bold;
+            border: 2px solid #a68b5b;
+            margin-bottom: 30px;
+        }
+
+        .description {
+            font-size: 16px;
+            line-height: 1.6;
+            background: #f9f6f0;
             padding: 20px;
-            border-radius: 10px;
-            max-width: 600px;
-            margin: auto;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid #bfa77a;
+        }
+
+        /* RIGHT SIDE */
+        .right {
+            width: 65%;
+            padding: 40px;
+            box-sizing: border-box;
+        }
+
+        .upload-box {
+            background: #fffdf8;
+            padding: 25px;
+            border: 1px solid #d6cbb5;
+            margin-bottom: 30px;
+        }
+
+        input[type="file"] {
+            display: block;
+            margin-bottom: 15px;
         }
 
         button {
-            padding: 10px 20px;
-            background: #5a3e2b;
+            background: #8b6f47;
             color: white;
             border: none;
-            border-radius: 6px;
-            margin-top: 10px;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 14px;
         }
 
-        .result {
-            margin-top: 20px;
-            text-align: left;
+        button:hover {
+            background: #6f5636;
         }
+
+        /* RESULTS */
+        .results {
+            width: 80%;
+            margin: 0 auto 40px auto;
+        }
+
+        .card {
+            background: #fffdf8;
+            border: 1px solid #d6cbb5;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #d6cbb5;
+            padding-bottom: 8px;
+        }
+
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+
     </style>
 </head>
+
 <body>
 
-<div class="card">
-    <h1>📬 PostArk</h1>
-    <p>Upload your postcard</p>
+<div class="container">
 
-    <form method="POST" enctype="multipart/form-data">
-        <input type="file" name="front" required><br><br>
-        <input type="file" name="back" required><br><br>
-        <button type="submit">Analyze</button>
-    </form>
-
-    {% if result %}
-        <div class="result">
-            <h3>Analysis</h3>
-            <p>{{ result }}</p>
+    <!-- LEFT COLUMN -->
+    <div class="left">
+        <div class="logo">
+            POSTARK
         </div>
-    {% endif %}
+
+        <div class="description">
+            <strong>Archive the Stories Behind Every Postcard</strong><br><br>
+            Upload both sides of a vintage postcard and uncover its hidden narrative —
+            from sender and recipient to historical context and inferred life events.
+            <br><br>
+            Each submission is treated like a museum artifact.
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="right">
+
+        <div class="upload-box">
+            <form method="POST" enctype="multipart/form-data">
+                <label>Front of Postcard:</label>
+                <input type="file" name="front" required>
+
+                <label>Back of Postcard:</label>
+                <input type="file" name="back" required>
+
+                <button type="submit">Analyze Artifact</button>
+            </form>
+        </div>
+
+        <!-- RESULTS -->
+        {% if result %}
+
+            <div class="results">
+
+                {% if result.error %}
+                    <div class="card error">
+                        {{ result.error }}
+                    </div>
+                {% else %}
+
+                    <div class="card">
+                        <h3>Overview</h3>
+                        <p>{{ result.overview }}</p>
+                    </div>
+
+                    <div class="card">
+                        <h3>Detailed Analysis</h3>
+                        <pre>{{ result.analysis }}</pre>
+                    </div>
+
+                    <div class="card">
+                        <h3>Reconstructed Story</h3>
+                        <p>{{ result.story }}</p>
+                    </div>
+
+                    <div class="card">
+                        <h3>Timeline</h3>
+                        <pre>{{ result.timeline }}</pre>
+                    </div>
+
+                {% endif %}
+
+            </div>
+
+        {% endif %}
+
+    </div>
+
 </div>
 
 </body>
