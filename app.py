@@ -1,7 +1,9 @@
-from flask import Flask, request, render_template, send_file
+from flask import Flask, request, render_template, send_file, redirect, url_for
 from openai import OpenAI
 import base64
 import os
+import sqlite3
+import uuid
 from dotenv import load_dotenv
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
@@ -11,13 +13,44 @@ load_dotenv()
 app = Flask(__name__)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+DB = "artifacts.db"
+UPLOAD_FOLDER = "static/uploads"
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# --- DB INIT ---
+def init_db():
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            overview TEXT,
+            analysis TEXT,
+            story TEXT,
+            timeline TEXT,
+            front_path TEXT,
+            back_path TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+
 # --- HELPERS ---
-def encode_image(file, filename):
-    data = base64.b64encode(file.read()).decode("utf-8")
-    path = f"/tmp/{filename}"
-    with open(path, "wb") as f:
-        f.write(base64.b64decode(data))
-    return data, path
+def save_image(file):
+    ext = file.filename.split(".")[-1]
+    filename = f"{uuid.uuid4()}.{ext}"
+    path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(path)
+    return path
+
+
+def encode_image_from_path(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
 
 
 def parse_sections(text):
@@ -46,54 +79,54 @@ def parse_sections(text):
     return sections
 
 
-def generate_pdf(data, front_path, back_path):
-    file_path = "/tmp/artifact.pdf"
+def save_artifact(data, front_path, back_path):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
 
-    doc = SimpleDocTemplate(file_path)
-    styles = getSampleStyleSheet()
-    content = []
+    c.execute("""
+        INSERT INTO artifacts (overview, analysis, story, timeline, front_path, back_path)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        data["overview"],
+        data["analysis"],
+        data["story"],
+        data["timeline"],
+        front_path,
+        back_path
+    ))
 
-    content.append(Paragraph("<b>PostArk Artifact Report</b>", styles["Title"]))
-    content.append(Spacer(1, 12))
+    artifact_id = c.lastrowid
+    conn.commit()
+    conn.close()
 
-    # Images
-    content.append(Paragraph("<b>Postcard Images</b>", styles["Heading2"]))
-    content.append(Spacer(1, 8))
+    return artifact_id
 
-    if os.path.exists(front_path):
-        content.append(Image(front_path, width=250, height=150))
-        content.append(Spacer(1, 8))
 
-    if os.path.exists(back_path):
-        content.append(Image(back_path, width=250, height=150))
-        content.append(Spacer(1, 12))
+def get_artifact(artifact_id):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
 
-    # Sections
-    for key, title in [
-        ("overview", "Overview"),
-        ("analysis", "Detailed Analysis"),
-        ("story", "Reconstructed Story"),
-        ("timeline", "Timeline"),
-    ]:
-        content.append(Paragraph(f"<b>{title}</b>", styles["Heading2"]))
-        content.append(Spacer(1, 6))
-        content.append(Paragraph(data.get(key, ""), styles["BodyText"]))
-        content.append(Spacer(1, 10))
+    c.execute("SELECT * FROM artifacts WHERE id = ?", (artifact_id,))
+    row = c.fetchone()
+    conn.close()
 
-    # Link back
-    content.append(Paragraph("<b>View Online:</b> https://your-app-name.onrender.com", styles["Normal"]))
+    if not row:
+        return None
 
-    doc.build(content)
-    return file_path
+    return {
+        "id": row[0],
+        "overview": row[1],
+        "analysis": row[2],
+        "story": row[3],
+        "timeline": row[4],
+        "front_path": row[5],
+        "back_path": row[6]
+    }
 
 
 # --- ROUTES ---
 @app.route("/", methods=["GET", "POST"])
 def index():
-    result = None
-    front_path = None
-    back_path = None
-
     if request.method == "POST":
         try:
             front = request.files.get("front")
@@ -102,25 +135,27 @@ def index():
             if not front or not back:
                 return render_template("index.html", result={"error": "Upload both images."})
 
-            front_img, front_path = encode_image(front, "front.jpg")
-            back_img, back_path = encode_image(back, "back.jpg")
+            # ✅ SAVE IMAGES PERMANENTLY
+            front_path = save_image(front)
+            back_path = save_image(back)
+
+            front_img = encode_image_from_path(front_path)
+            back_img = encode_image_from_path(back_path)
 
             prompt = """
-You are an expert historical archivist analyzing a vintage postcard.
-
-Return sections:
+Analyze this postcard and return:
 
 OVERVIEW:
 Short summary
 
 ANALYSIS:
-Sender, receiver, date, location, message summary
+Sender, receiver, date, location
 
 STORY:
 Narrative
 
 TIMELINE:
-Bullet timeline
+Bullet points
 """
 
             response = client.responses.create(
@@ -138,28 +173,30 @@ Bullet timeline
             raw = response.output[0].content[0].text
             parsed = parse_sections(raw)
 
-            result = parsed
+            artifact_id = save_artifact(parsed, front_path, back_path)
+
+            return redirect(url_for("artifact", artifact_id=artifact_id))
 
         except Exception as e:
-            result = {"error": str(e)}
+            return render_template("index.html", result={"error": str(e)})
 
-    return render_template("index.html", result=result, front_path=front_path, back_path=back_path)
+    return render_template("index.html", result=None)
 
 
-@app.route("/download", methods=["POST"])
-def download():
-    data = {
-        "overview": request.form.get("overview"),
-        "analysis": request.form.get("analysis"),
-        "story": request.form.get("story"),
-        "timeline": request.form.get("timeline"),
-    }
+@app.route("/artifact/<int:artifact_id>")
+def artifact(artifact_id):
+    data = get_artifact(artifact_id)
 
-    front_path = request.form.get("front_path")
-    back_path = request.form.get("back_path")
+    if not data:
+        return "Artifact not found", 404
 
-    pdf_path = generate_pdf(data, front_path, back_path)
-    return send_file(pdf_path, as_attachment=True)
+    return render_template(
+        "index.html",
+        result=data,
+        front_path="/" + data["front_path"],
+        back_path="/" + data["back_path"],
+        artifact_id=artifact_id
+    )
 
 
 # --- RUN ---

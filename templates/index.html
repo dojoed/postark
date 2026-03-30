@@ -1,92 +1,106 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>PostArk</title>
 
     <style>
         body {
-            font-family: Arial;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5efe6; /* beige */
+            color: #333;
             text-align: center;
-
-            /* ✅ FIXED: warm beige background */
-            background: #f5f0e6;
-
-            padding: 40px;
         }
 
         .container {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            max-width: 700px;
+            max-width: 900px;
             margin: auto;
+            padding: 20px;
         }
 
         /* LOGO */
         .logo {
-            width: 200px;
-            height: auto;
-            margin-bottom: 15px;
+            width: 180px;
+            margin-bottom: 20px;
         }
 
         h1 {
             margin-bottom: 10px;
         }
 
-        input {
-            margin: 10px;
+        form {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            margin: 10px 0;
         }
 
         button {
             padding: 10px 20px;
-            background: black;
-            color: white;
             border: none;
-            cursor: pointer;
-        }
-
-        .section {
-            text-align: left;
-            margin-top: 20px;
-        }
-
-        /* IMAGE DISPLAY */
-        .image-row {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 20px;
-        }
-
-        .image-row img {
-            width: 48%;
+            background-color: #6b4f3b;
+            color: white;
             border-radius: 6px;
             cursor: pointer;
         }
 
-        /* MODAL */
-        #modal {
-            display: none;
-            position: fixed;
-            z-index: 999;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.9);
-        }
-
-        #modal img {
-            display: block;
-            max-width: 90%;
-            max-height: 90%;
-            margin: 5% auto;
+        button:hover {
+            background-color: #5a3f2e;
         }
 
         /* LOADER */
-        #loader {
+        .loader {
             display: none;
-            margin-top: 15px;
-            color: #555;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        /* IMAGES */
+        .images {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .images img {
+            width: 200px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .images img:hover {
+            transform: scale(1.05);
+        }
+
+        /* RESULTS */
+        .results {
+            text-align: left;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .section h3 {
+            margin-bottom: 5px;
+            color: #6b4f3b;
+        }
+
+        /* ERROR */
+        .error {
+            color: red;
+            font-weight: bold;
         }
     </style>
 
@@ -95,105 +109,100 @@
             document.getElementById("loader").style.display = "block";
         }
 
-        function openModal(src) {
-            document.getElementById("modal").style.display = "block";
-            document.getElementById("modalImg").src = src;
-        }
-
-        function closeModal() {
-            document.getElementById("modal").style.display = "none";
-        }
-
-        function previewImage(input, id) {
-            const file = input.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    document.getElementById(id).src = e.target.result;
-                    document.getElementById(id).style.display = "block";
-                };
-                reader.readAsDataURL(file);
-            }
+        function copyLink() {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url);
+            alert("Link copied!");
         }
     </script>
 </head>
 
 <body>
+    <div class="container">
 
-<div class="container">
+        <!-- LOGO -->
+        <img src="/static/logo.png" class="logo">
 
-    <img src="/static/logo.png" class="logo">
+        <h1>PostArk</h1>
+        <p>Upload a postcard and uncover its story</p>
 
-    <h1>PostArk</h1>
-    <p>Upload a postcard to analyze its history</p>
+        <!-- FORM -->
+        <form method="POST" enctype="multipart/form-data" onsubmit="showLoader()">
+            <div>
+                <label>Front Image:</label><br>
+                <input type="file" name="front" required>
+            </div>
 
-    <form method="POST" enctype="multipart/form-data" onsubmit="showLoader()">
+            <div>
+                <label>Back Image:</label><br>
+                <input type="file" name="back" required>
+            </div>
 
-        <p>Front Image:</p>
-        <input type="file" name="front" required onchange="previewImage(this, 'frontPreview')">
-        <img id="frontPreview" style="display:none; width:100%; margin-top:10px; border-radius:6px;">
-
-        <p>Back Image:</p>
-        <input type="file" name="back" required onchange="previewImage(this, 'backPreview')">
-        <img id="backPreview" style="display:none; width:100%; margin-top:10px; border-radius:6px;">
-
-        <br><br>
-        <button type="submit">Analyze Artifact</button>
-    </form>
-
-    <div id="loader">
-        <p><i>Analyzing... please wait</i></p>
-    </div>
-
-    {% if result %}
-        {% if result.error %}
-            <p style="color:red;">{{ result.error }}</p>
-        {% else %}
-
-        <div class="image-row">
-            <img src="{{ front_path }}" onclick="openModal(this.src)">
-            <img src="{{ back_path }}" onclick="openModal(this.src)">
-        </div>
-
-        <div class="section">
-            <h3>Overview</h3>
-            <p>{{ result.overview }}</p>
-        </div>
-
-        <div class="section">
-            <h3>Analysis</h3>
-            <p>{{ result.analysis }}</p>
-        </div>
-
-        <div class="section">
-            <h3>Story</h3>
-            <p>{{ result.story }}</p>
-        </div>
-
-        <div class="section">
-            <h3>Timeline</h3>
-            <p>{{ result.timeline }}</p>
-        </div>
-
-        <form method="POST" action="/download">
-            <input type="hidden" name="overview" value="{{ result.overview }}">
-            <input type="hidden" name="analysis" value="{{ result.analysis }}">
-            <input type="hidden" name="story" value="{{ result.story }}">
-            <input type="hidden" name="timeline" value="{{ result.timeline }}">
-            <input type="hidden" name="front_path" value="{{ front_path }}">
-            <input type="hidden" name="back_path" value="{{ back_path }}">
-
-            <button type="submit">Download PDF</button>
+            <br>
+            <button type="submit">Analyze Postcard</button>
         </form>
 
+        <!-- LOADER -->
+        <div id="loader" class="loader">
+            🔍 Analyzing postcard... please wait
+        </div>
+
+        <!-- ERROR -->
+        {% if result and result.error %}
+            <p class="error">{{ result.error }}</p>
         {% endif %}
-    {% endif %}
 
-</div>
+        <!-- RESULTS -->
+        {% if result and not result.error %}
 
-<div id="modal" onclick="closeModal()">
-    <img id="modalImg">
-</div>
+            <!-- IMAGES -->
+            <div class="images">
+                {% if front_path %}
+                    <a href="{{ front_path }}" target="_blank">
+                        <img src="{{ front_path }}">
+                    </a>
+                {% endif %}
 
+                {% if back_path %}
+                    <a href="{{ back_path }}" target="_blank">
+                        <img src="{{ back_path }}">
+                    </a>
+                {% endif %}
+            </div>
+
+            <div class="results">
+
+                <div class="section">
+                    <h3>Overview</h3>
+                    <p>{{ result.overview }}</p>
+                </div>
+
+                <div class="section">
+                    <h3>Analysis</h3>
+                    <p>{{ result.analysis }}</p>
+                </div>
+
+                <div class="section">
+                    <h3>Story</h3>
+                    <p>{{ result.story }}</p>
+                </div>
+
+                <div class="section">
+                    <h3>Timeline</h3>
+                    <p>{{ result.timeline }}</p>
+                </div>
+
+            </div>
+
+            <!-- SHARE -->
+            {% if artifact_id %}
+                <div style="margin-top:20px;">
+                    <button onclick="copyLink()">Copy Share Link</button>
+                </div>
+            {% endif %}
+
+        {% endif %}
+
+    </div>
 </body>
 </html>
