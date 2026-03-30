@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PostArk</title>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            background: #f4f1ea;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 600px;
+            margin: auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #5a3e2b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        .result {
+            margin-top: 20px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>📬 PostArk</h1>
+    <p>Upload your postcard</p>
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="front" required><br><br>
+        <input type="file" name="back" required><br><br>
+        <button type="submit">Analyze</button>
+    </form>
+
+    {% if result %}
+        <div class="result">
+            <h3>Analysis</h3>
+            <p>{{ result }}</p>
+        </div>
+    {% endif %}
+</div>
+
+</body>
+</html>
