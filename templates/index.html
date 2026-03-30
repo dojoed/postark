@@ -2,107 +2,154 @@
 <html>
 <head>
     <title>PostArk</title>
+
     <style>
         body {
-            font-family: Arial;
-            text-align: center;
-            background: #f4f4f4;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
             padding: 40px;
         }
 
         .container {
             background: white;
             padding: 30px;
-            border-radius: 10px;
+            border-radius: 12px;
             max-width: 700px;
             margin: auto;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        }
+
+        /* LOGO FIX */
+        .logo {
+            display: block;
+            max-width: 140px;
+            height: auto;
+            margin: 0 auto 15px auto;
         }
 
         h1 {
+            text-align: center;
             margin-bottom: 10px;
         }
 
+        p.subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 20px;
+        }
+
         input {
-            margin: 10px;
+            margin: 10px 0;
         }
 
         button {
-            padding: 10px 20px;
+            padding: 12px 20px;
             background: black;
             color: white;
             border: none;
             cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            border-radius: 6px;
         }
 
         button:disabled {
-            background: gray;
+            background: #999;
         }
 
         .section {
             text-align: left;
-            margin-top: 20px;
+            margin-top: 25px;
         }
 
-        #loader {
+        .section h3 {
+            margin-bottom: 5px;
+        }
+
+        .preview {
+            margin-top: 10px;
+            max-width: 100%;
+            border-radius: 6px;
+        }
+
+        /* 🔥 REAL LOADER (FULL SCREEN OVERLAY) */
+        #loader-overlay {
             display: none;
-            margin-top: 20px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
         }
 
         .spinner {
             border: 6px solid #eee;
             border-top: 6px solid black;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 50px;
+            height: 50px;
             animation: spin 1s linear infinite;
-            margin: auto;
+            margin-bottom: 15px;
         }
 
         @keyframes spin {
             100% { transform: rotate(360deg); }
         }
-
-        img.logo {
-            width: 120px;
-            margin-bottom: 10px;
-        }
     </style>
 
     <script>
         function showLoader() {
-            document.getElementById("loader").style.display = "block";
-            const btn = document.getElementById("analyzeBtn");
-            btn.disabled = true;
-            btn.innerText = "Analyzing...";
+            document.getElementById("loader-overlay").style.display = "flex";
+        }
+
+        function previewImage(input, id) {
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById(id).src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
         }
     </script>
 </head>
 
 <body>
+
+<!-- 🔥 LOADER OVERLAY -->
+<div id="loader-overlay">
+    <div class="spinner"></div>
+    <p>Analyzing your postcard... this may take a few seconds</p>
+</div>
+
 <div class="container">
 
     <!-- LOGO -->
     <img src="/static/logo.png" class="logo">
 
     <h1>PostArk</h1>
-    <p>Upload a postcard to analyze its history</p>
+    <p class="subtitle">Upload a postcard and uncover its story</p>
 
     <form method="POST" enctype="multipart/form-data" onsubmit="showLoader()">
-        <p>Front Image:</p>
-        <input type="file" name="front" required>
 
-        <p>Back Image:</p>
-        <input type="file" name="back" required>
+        <p><b>Front Image</b></p>
+        <input type="file" name="front" required onchange="previewImage(this, 'frontPreview')">
+        <img id="frontPreview" class="preview"/>
+
+        <p><b>Back Image</b></p>
+        <input type="file" name="back" required onchange="previewImage(this, 'backPreview')">
+        <img id="backPreview" class="preview"/>
 
         <br><br>
-        <button id="analyzeBtn" type="submit">Analyze Artifact</button>
+        <button type="submit">Analyze Artifact</button>
     </form>
-
-    <!-- LOADER -->
-    <div id="loader">
-        <div class="spinner"></div>
-        <p>Analyzing artifact... this may take a few seconds</p>
-    </div>
 
     {% if result %}
         {% if result.error %}
