@@ -20,13 +20,7 @@ def encode_bytes(file_bytes):
 def crop_stamp(image_bytes):
     image = Image.open(io.BytesIO(image_bytes))
     width, height = image.size
-
-    crop_box = (
-        int(width * 0.65),
-        0,
-        width,
-        int(height * 0.35)
-    )
+    crop_box = (int(width * 0.65), 0, width, int(height * 0.35))
     return image.crop(crop_box)
 
 def image_to_base64(img):
@@ -39,7 +33,7 @@ def safe_json_parse(text):
         cleaned = text.replace("```json", "").replace("```", "").strip()
         return json.loads(cleaned)
     except:
-        return {"raw": text}
+        return {}
 
 # --- HTML ---
 HTML = """
@@ -61,54 +55,38 @@ body {
     height: 100vh;
 }
 
-/* LEFT PANEL */
+/* LEFT */
 .left {
-    width: 35%;
-    padding: 40px 30px;
+    width: 32%;
+    padding: 30px;
     background: #efe3c2;
     border-right: 2px solid #d6c7a1;
 }
 
-/* RIGHT PANEL */
+/* RIGHT */
 .right {
-    width: 65%;
-    padding: 40px;
+    width: 68%;
+    padding: 30px;
     overflow-y: auto;
 }
 
 /* HEADER */
-.header {
-    margin-bottom: 25px;
-}
-
 .logo-img {
-    width: 140px;
+    width: 150px;
     margin-bottom: 10px;
-}
-
-.title {
-    font-size: 26px;
-    font-weight: bold;
 }
 
 .tagline {
     font-size: 14px;
-    color: #6b5e45;
-}
-
-/* UPLOAD CARD */
-.upload-box {
-    border: 2px dashed #cbb88a;
-    padding: 25px;
-    border-radius: 8px;
-    background: #fdf6e3;
-    margin-top: 25px;
-}
-
-/* INPUT */
-input[type="file"] {
-    margin-top: 10px;
     margin-bottom: 20px;
+}
+
+/* UPLOAD */
+.upload-box {
+    background: #fdf6e3;
+    border: 2px dashed #cbb88a;
+    padding: 20px;
+    border-radius: 8px;
 }
 
 /* BUTTON */
@@ -119,42 +97,79 @@ button {
     color: white;
     border: none;
     border-radius: 6px;
-    font-size: 15px;
-    cursor: pointer;
+    margin-top: 15px;
 }
 
-/* CARDS */
+/* IMAGE PREVIEW */
+.preview img {
+    width: 100%;
+    margin-top: 15px;
+    border-radius: 6px;
+}
+
+/* OUTPUT */
+.output-images {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.output-images img {
+    width: 48%;
+    border-radius: 6px;
+}
+
+/* TABS */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.tab {
+    padding: 8px 14px;
+    background: #d6c7a1;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.tab.active {
+    background: #8b6f47;
+    color: white;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* CARD */
 .card {
     background: #fffaf0;
-    padding: 24px;
-    margin-bottom: 25px;
-    border: 1px solid #d6c7a1;
+    padding: 20px;
     border-radius: 8px;
 }
-
-/* STAMP LAYOUT */
-.row {
-    display: flex;
-    gap: 25px;
-    align-items: flex-start;
-}
-
-.left-col { flex: 1; }
-.right-col { flex: 2; }
 
 /* STORY */
 .story {
     background: #fdf6e3;
-    padding: 18px;
-    border-left: 5px solid #8b6f47;
-    line-height: 1.7;
-}
-
-/* IMAGES */
-img {
-    border-radius: 6px;
+    padding: 15px;
+    border-left: 4px solid #8b6f47;
 }
 </style>
+
+<script>
+function showTab(id) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+    document.getElementById(id).classList.add('active');
+    document.getElementById(id + '-tab').classList.add('active');
+}
+</script>
 
 </head>
 <body>
@@ -164,40 +179,27 @@ img {
 <!-- LEFT -->
 <div class="left">
 
-<div class="header">
-    <img src="/static/logo.png" class="logo-img">
-    <div class="title">Postcard Archaeology</div>
-    <div class="tagline">
-        Preserving history through postcards — uncovering people, places, and forgotten stories.
-    </div>
-</div>
+<img src="/static/logo.png" class="logo-img">
+<div class="tagline">Preserving history through postcards</div>
 
 <form method="POST" enctype="multipart/form-data">
 
 <div class="upload-box">
-    <label><b>Front Image</b></label><br>
-    <input type="file" name="front" required>
+    <label>Front Image</label><br>
+    <input type="file" name="front" required><br><br>
 
-    <label><b>Back Image</b></label><br>
+    <label>Back Image</label><br>
     <input type="file" name="back" required>
 </div>
 
-<br>
-<button type="submit">🔍 Analyze Postcard</button>
+<button type="submit">Analyze</button>
 
 </form>
 
 {% if front_image %}
-<div class="card">
-<h3>Front</h3>
-<img src="data:image/jpeg;base64,{{ front_image }}" width="100%">
-</div>
-{% endif %}
-
-{% if back_image %}
-<div class="card">
-<h3>Back</h3>
-<img src="data:image/jpeg;base64,{{ back_image }}" width="100%">
+<div class="preview">
+<img src="data:image/jpeg;base64,{{ front_image }}">
+<img src="data:image/jpeg;base64,{{ back_image }}">
 </div>
 {% endif %}
 
@@ -208,44 +210,41 @@ img {
 
 {% if data %}
 
-<div class="card">
-<h2>🧾 Overview</h2>
+<div class="output-images">
+<img src="data:image/jpeg;base64,{{ front_image }}">
+<img src="data:image/jpeg;base64,{{ back_image }}">
+</div>
 
+<div class="tabs">
+<div id="overview-tab" class="tab active" onclick="showTab('overview')">Overview</div>
+<div id="stamp-tab" class="tab" onclick="showTab('stamp')">Stamp</div>
+<div id="story-tab" class="tab" onclick="showTab('story')">Story</div>
+</div>
+
+<div id="overview" class="tab-content active card">
 <p><b>Sender:</b> {{ data.sender }}</p>
 <p><b>Receiver:</b> {{ data.receiver }}</p>
 <p><b>From:</b> {{ data.location_sent_from }}</p>
 <p><b>To:</b> {{ data.location_sent_to }}</p>
 <p><b>Date:</b> {{ data.date }}</p>
 
-<h3>✉️ Message</h3>
+<h3>Message</h3>
 <p>{{ data.full_transcription }}</p>
 </div>
 
-<div class="card">
-<h2>📮 Stamp Analysis</h2>
-
-<div class="row">
-
-<div class="left-col">
-<img src="data:image/png;base64,{{ stamp_image }}" width="180">
-</div>
-
-<div class="right-col">
+<div id="stamp" class="tab-content card">
+<div style="display:flex; gap:20px;">
+<img src="data:image/png;base64,{{ stamp_image }}" width="160">
+<div>
 <p><b>Country:</b> {{ stamp.country }}</p>
 <p><b>Denomination:</b> {{ stamp.denomination }}</p>
 <p><b>Era:</b> {{ stamp.year_or_era }}</p>
 <p><b>Description:</b> {{ stamp.stamp_description }}</p>
-
-{% if stamp.postmark_details %}
-<p><b>Postmark:</b> {{ stamp.postmark_details }}</p>
-{% endif %}
 </div>
-
 </div>
 </div>
 
-<div class="card">
-<h2>📖 Historical Narrative</h2>
+<div id="story" class="tab-content card">
 <div class="story">
 {{ narrative }}
 </div>
@@ -265,7 +264,6 @@ img {
 def index():
 
     if request.method == "POST":
-
         front = request.files["front"]
         back = request.files["back"]
 
@@ -293,7 +291,7 @@ def index():
         # --- STAMP ---
         stamp = client.responses.create(
             model="gpt-4.1-mini",
-            input=f"Analyze the stamp and return structured JSON: {data}"
+            input=f"Analyze stamp: {data}"
         )
 
         stamp_data = safe_json_parse(stamp.output[0].content[0].text)
@@ -302,10 +300,10 @@ def index():
         cropped = crop_stamp(back_bytes)
         stamp_image = image_to_base64(cropped)
 
-        # --- NARRATIVE ---
+        # --- STORY ---
         narrative = client.responses.create(
             model="gpt-4.1-mini",
-            input=f"Explain this postcard with historical context: {data}"
+            input=f"Explain this postcard: {data}"
         )
 
         return render_template_string(
