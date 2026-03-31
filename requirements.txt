@@ -1,6 +1,5 @@
 flask
-gunicorn
 openai
 python-dotenv
-pillow
-reportlab==4.0.9
+Pillow
+requests
