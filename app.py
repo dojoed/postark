@@ -14,7 +14,21 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 app = Flask(__name__)
 
+DATA_FILE = "postcards.json"
+
 # --- HELPERS ---
+def load_postcards():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def save_postcard(entry):
+    data = load_postcards()
+    data.append(entry)
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
+
 def encode_bytes(file_bytes):
     return base64.b64encode(file_bytes).decode()
 
@@ -48,7 +62,7 @@ def geocode_location(location):
         pass
     return None, None
 
-# --- HTML TEMPLATE ---
+# --- HTML ---
 HTML = """
 <!DOCTYPE html>
 <html>
@@ -64,46 +78,20 @@ body { margin:0; font-family: Georgia; background:#f5ecd9; }
 .left { width:32%; padding:30px; background:#efe3c2; border-right:2px solid #d6c7a1; }
 .right { width:68%; padding:30px; overflow-y:auto; }
 
-.logo { width:220px; margin-bottom:10px; }
-
-.tagline {
-    font-size:15px;
-    margin-bottom:25px;
-    line-height:1.4;
-}
-
-/* MODERN UPLOAD */
-.upload-box {
-    background:#fdf6e3;
-    border-radius:10px;
-    padding:20px;
-}
-
-.upload-title {
-    font-weight:bold;
-    margin-bottom:12px;
-}
-
-.drop-zone {
-    border:2px dashed #cbb88a;
-    padding:18px;
-    border-radius:8px;
-    background:#fffaf0;
-    transition:0.2s;
-}
-
-.drop-zone:hover {
-    border-color:#8b6f47;
-    background:#f7efd9;
-}
-
-input[type="file"] {
-    display:block;
-    margin-top:8px;
+/* LOGO FULL WIDTH */
+.logo {
+    width:100%;
     margin-bottom:15px;
 }
 
-/* BUTTON */
+/* UPLOAD */
+.upload-box {
+    background:#fffaf0;
+    border:2px dashed #cbb88a;
+    padding:20px;
+    border-radius:8px;
+}
+
 button {
     width:100%;
     padding:12px;
@@ -112,53 +100,21 @@ button {
     border:none;
     border-radius:6px;
     margin-top:15px;
-    font-size:15px;
 }
 
-/* OUTPUT */
-.output-images {
-    display:flex;
-    gap:15px;
-    margin-bottom:20px;
-}
+.output-images { display:flex; gap:15px; margin-bottom:20px; }
+.output-images img { width:48%; border-radius:6px; }
 
-.output-images img {
-    width:48%;
-    border-radius:6px;
-}
-
-/* TABS */
 .tabs { display:flex; gap:10px; margin-bottom:15px; }
-
-.tab {
-    padding:8px 14px;
-    background:#d6c7a1;
-    cursor:pointer;
-    border-radius:6px;
-}
-
-.tab.active {
-    background:#8b6f47;
-    color:white;
-}
+.tab { padding:8px 14px; background:#d6c7a1; cursor:pointer; border-radius:6px; }
+.tab.active { background:#8b6f47; color:white; }
 
 .tab-content { display:none; }
 .tab-content.active { display:block; }
 
-.card {
-    background:#fffaf0;
-    padding:20px;
-    border-radius:8px;
-}
+.card { background:#fffaf0; padding:20px; border-radius:8px; }
 
-/* STORY */
-.story-section { margin-bottom:15px; }
-
-/* MAP */
-#map {
-    height:400px;
-    border-radius:8px;
-}
+#map { height:400px; border-radius:8px; }
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -176,18 +132,19 @@ function showTab(id) {
 
 function initMap() {
     if (!window.mapInitialized) {
-        var lat = {{ lat if lat else 0 }};
-        var lon = {{ lon if lon else 0 }};
 
-        var map = L.map('map').setView([lat, lon], 5);
+        var map = L.map('map').setView([20, 0], 2);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        {% if lat and lon %}
-        L.marker([lat, lon]).addTo(map)
-            .bindPopup("{{ location }}")
-            .openPopup();
-        {% endif %}
+        var postcards = {{ postcards|tojson }};
+
+        postcards.forEach(p => {
+            if(p.lat && p.lon){
+                L.marker([p.lat, p.lon]).addTo(map)
+                    .bindPopup("<b>"+p.location+"</b><br><img src='data:image/jpeg;base64,"+p.front+"' width='120'>");
+            }
+        });
 
         window.mapInitialized = true;
     }
@@ -199,38 +156,22 @@ function initMap() {
 
 <div class="wrapper">
 
-<!-- LEFT -->
 <div class="left">
 
 <img src="/static/logo.png" class="logo">
 
-<div class="tagline">
-Preserving history through postcards — uncovering people, places, and forgotten stories.
-</div>
-
 <form method="POST" enctype="multipart/form-data">
-
 <div class="upload-box">
-
-<div class="upload-title">Upload Postcard</div>
-
-<div class="drop-zone">
-<label>Front Image</label>
-<input type="file" name="front" required>
-
-<label>Back Image</label>
+<label>Front</label><br>
+<input type="file" name="front" required><br><br>
+<label>Back</label><br>
 <input type="file" name="back" required>
 </div>
-
-</div>
-
-<button type="submit">🔍 Analyze Postcard</button>
-
+<button type="submit">Analyze</button>
 </form>
 
 </div>
 
-<!-- RIGHT -->
 <div class="right">
 
 {% if raw_data %}
@@ -247,44 +188,20 @@ Preserving history through postcards — uncovering people, places, and forgotte
 <div id="map-tab" class="tab" onclick="showTab('map')">Map</div>
 </div>
 
-<!-- OVERVIEW -->
 <div id="overview" class="tab-content active card">
-<p><b>Sender:</b> {{ data.sender if data else "" }}</p>
-<p><b>Receiver:</b> {{ data.receiver if data else "" }}</p>
 <p><b>From:</b> {{ location }}</p>
 <p>{{ data.full_transcription if data else raw_data }}</p>
 </div>
 
-<!-- STAMP -->
 <div id="stamp" class="tab-content card">
-{% if stamp %}
-<p><b>Country:</b> {{ stamp.country }}</p>
-<p><b>Denomination:</b> {{ stamp.denomination }}</p>
-<p><b>Era:</b> {{ stamp.year_or_era }}</p>
-<p><b>Description:</b> {{ stamp.description }}</p>
-<p><b>Confidence:</b> {{ stamp.confidence }}</p>
-{% else %}
-<pre>{{ stamp_raw }}</pre>
-{% endif %}
-<br>
+<p>{{ stamp.description if stamp else "" }}</p>
 <img src="data:image/png;base64,{{ stamp_image }}" width="160">
 </div>
 
-<!-- STORY -->
 <div id="story" class="tab-content card">
-
-{% if story %}
-<div class="story-section"><b>People:</b><br>{{ story.people }}</div>
-<div class="story-section"><b>Context:</b><br>{{ story.context }}</div>
-<div class="story-section"><b>Meaning:</b><br>{{ story.meaning }}</div>
-<div class="story-section"><b>Confidence:</b> {{ story.confidence }}</div>
-{% else %}
-<pre>{{ narrative }}</pre>
-{% endif %}
-
+<p>{{ story.meaning if story else "" }}</p>
 </div>
 
-<!-- MAP -->
 <div id="map" class="tab-content card">
 <div id="map"></div>
 </div>
@@ -301,6 +218,8 @@ Preserving history through postcards — uncovering people, places, and forgotte
 # --- ROUTE ---
 @app.route("/", methods=["GET", "POST"])
 def index():
+
+    postcards = load_postcards()
 
     if request.method == "POST":
 
@@ -319,7 +238,7 @@ def index():
             input=[{
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": "Return JSON: sender, receiver, location_sent_from, full_transcription"},
+                    {"type": "input_text", "text": "Return JSON: location_sent_from, full_transcription"},
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_b64}"},
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_b64}"}
                 ]
@@ -330,38 +249,16 @@ def index():
         data = safe_json_parse(raw_data)
 
         location = data.get("location_sent_from") if data else None
-        lat, lon = geocode_location(location) if location else (None, None)
+        lat, lon = geocode_location(location)
 
-        # --- STAMP (FIXED) ---
-        stamp_resp = client.responses.create(
-            model="gpt-4.1-mini",
-            input=[{
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": "Analyze ONLY the stamp and return JSON: country, denomination, year_or_era, description, confidence"},
-                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_b64}"},
-                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_b64}"}
-                ]
-            }]
-        )
+        # SAVE POSTCARD
+        save_postcard({
+            "location": location,
+            "lat": lat,
+            "lon": lon,
+            "front": front_b64
+        })
 
-        stamp_raw = stamp_resp.output[0].content[0].text
-        stamp = safe_json_parse(stamp_raw)
-
-        # --- STORY ---
-        story_resp = client.responses.create(
-            model="gpt-4.1-mini",
-            input=f"""
-Return JSON:
-people, context, meaning, confidence
-
-Postcard: {raw_data}
-"""
-        )
-
-        story = safe_json_parse(story_resp.output[0].content[0].text)
-
-        # --- IMAGE ---
         cropped = crop_stamp(back_bytes)
         stamp_image = image_to_base64(cropped)
 
@@ -369,16 +266,11 @@ Postcard: {raw_data}
             HTML,
             data=data,
             raw_data=raw_data,
-            stamp=stamp,
-            stamp_raw=stamp_raw,
-            story=story,
-            narrative=story_resp.output[0].content[0].text,
-            stamp_image=stamp_image,
             front_image=front_b64,
             back_image=back_b64,
+            stamp_image=stamp_image,
             location=location,
-            lat=lat,
-            lon=lon
+            postcards=load_postcards()
         )
 
-    return render_template_string(HTML)
+    return render_template_string(HTML, postcards=postcards)
