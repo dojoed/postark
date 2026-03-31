@@ -41,7 +41,7 @@ def safe_json_parse(text):
     except:
         return {"raw": text}
 
-# --- HTML TEMPLATE ---
+# --- HTML ---
 HTML = """
 <!DOCTYPE html>
 <html>
@@ -61,77 +61,98 @@ body {
     height: 100vh;
 }
 
-/* LEFT */
+/* LEFT PANEL */
 .left {
     width: 35%;
-    padding: 30px;
+    padding: 40px 30px;
     background: #efe3c2;
     border-right: 2px solid #d6c7a1;
 }
 
-/* RIGHT */
+/* RIGHT PANEL */
 .right {
     width: 65%;
-    padding: 30px;
+    padding: 40px;
     overflow-y: auto;
 }
 
 /* HEADER */
 .header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 10px;
+    margin-bottom: 25px;
 }
 
 .logo-img {
-    width: 50px;
+    width: 140px;
+    margin-bottom: 10px;
 }
 
 .title {
-    font-size: 24px;
+    font-size: 26px;
     font-weight: bold;
 }
 
 .tagline {
-    font-size: 13px;
+    font-size: 14px;
     color: #6b5e45;
+}
+
+/* UPLOAD CARD */
+.upload-box {
+    border: 2px dashed #cbb88a;
+    padding: 25px;
+    border-radius: 8px;
+    background: #fdf6e3;
+    margin-top: 25px;
+}
+
+/* INPUT */
+input[type="file"] {
+    margin-top: 10px;
     margin-bottom: 20px;
 }
 
-/* Cards */
+/* BUTTON */
+button {
+    width: 100%;
+    padding: 12px;
+    background: #8b6f47;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+/* CARDS */
 .card {
     background: #fffaf0;
-    padding: 20px;
-    margin-bottom: 20px;
+    padding: 24px;
+    margin-bottom: 25px;
     border: 1px solid #d6c7a1;
-    border-radius: 6px;
+    border-radius: 8px;
 }
 
-/* Layout */
+/* STAMP LAYOUT */
 .row {
     display: flex;
-    gap: 20px;
+    gap: 25px;
+    align-items: flex-start;
 }
 
 .left-col { flex: 1; }
 .right-col { flex: 2; }
 
-/* Story */
+/* STORY */
 .story {
     background: #fdf6e3;
-    padding: 16px;
-    border-left: 4px solid #8b6f47;
-    line-height: 1.6;
+    padding: 18px;
+    border-left: 5px solid #8b6f47;
+    line-height: 1.7;
 }
 
-button {
-    padding: 10px 16px;
-    background: #8b6f47;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
+/* IMAGES */
+img {
+    border-radius: 6px;
 }
 </style>
 
@@ -146,20 +167,24 @@ button {
 <div class="header">
     <img src="/static/logo.png" class="logo-img">
     <div class="title">Postcard Archaeology</div>
-</div>
-
-<div class="tagline">
-Preserving history through postcards — uncovering stories, people, and places across time.
+    <div class="tagline">
+        Preserving history through postcards — uncovering people, places, and forgotten stories.
+    </div>
 </div>
 
 <form method="POST" enctype="multipart/form-data">
-    <label>Front Image</label><br>
-    <input type="file" name="front" required><br>
 
-    <label>Back Image</label><br>
-    <input type="file" name="back" required><br>
+<div class="upload-box">
+    <label><b>Front Image</b></label><br>
+    <input type="file" name="front" required>
 
-    <button type="submit">Analyze</button>
+    <label><b>Back Image</b></label><br>
+    <input type="file" name="back" required>
+</div>
+
+<br>
+<button type="submit">🔍 Analyze Postcard</button>
+
 </form>
 
 {% if front_image %}
@@ -184,7 +209,7 @@ Preserving history through postcards — uncovering stories, people, and places 
 {% if data %}
 
 <div class="card">
-<h2>Overview</h2>
+<h2>🧾 Overview</h2>
 
 <p><b>Sender:</b> {{ data.sender }}</p>
 <p><b>Receiver:</b> {{ data.receiver }}</p>
@@ -192,12 +217,12 @@ Preserving history through postcards — uncovering stories, people, and places 
 <p><b>To:</b> {{ data.location_sent_to }}</p>
 <p><b>Date:</b> {{ data.date }}</p>
 
-<h3>Message</h3>
+<h3>✉️ Message</h3>
 <p>{{ data.full_transcription }}</p>
 </div>
 
 <div class="card">
-<h2>Stamp Analysis</h2>
+<h2>📮 Stamp Analysis</h2>
 
 <div class="row">
 
@@ -220,7 +245,7 @@ Preserving history through postcards — uncovering stories, people, and places 
 </div>
 
 <div class="card">
-<h2>Historical Narrative</h2>
+<h2>📖 Historical Narrative</h2>
 <div class="story">
 {{ narrative }}
 </div>
