@@ -6,6 +6,7 @@ import json
 from dotenv import load_dotenv
 from PIL import Image
 import io
+import requests
 
 # --- SETUP ---
 load_dotenv()
@@ -35,12 +36,28 @@ def safe_json_parse(text):
     except:
         return None
 
+def geocode_location(location):
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {"q": location, "format": "json"}
+        headers = {"User-Agent": "postcard-app"}
+
+        res = requests.get(url, params=params, headers=headers).json()
+
+        if res:
+            return float(res[0]["lat"]), float(res[0]["lon"])
+    except:
+        pass
+    return None, None
+
 # --- HTML ---
 HTML = """
 <!DOCTYPE html>
 <html>
 <head>
 <title>Postcard Archaeology</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
 <style>
 body { margin:0; font-family: Georgia; background:#f5ecd9; }
@@ -75,9 +92,15 @@ button {
 
 .card { background:#fffaf0; padding:20px; border-radius:8px; }
 
-.story-section { margin-bottom:15px; }
-.story-title { font-weight:bold; margin-bottom:5px; }
+.story { background:#fdf6e3; padding:15px; border-left:4px solid #8b6f47; }
+
+#map {
+    height: 400px;
+    border-radius: 8px;
+}
 </style>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
 function showTab(id) {
@@ -85,6 +108,29 @@ function showTab(id) {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(id).classList.add('active');
     document.getElementById(id+'-tab').classList.add('active');
+
+    if(id === "map") {
+        setTimeout(initMap, 100);
+    }
+}
+
+function initMap() {
+    if (!window.mapInitialized) {
+        var lat = {{ lat if lat else 0 }};
+        var lon = {{ lon if lon else 0 }};
+
+        var map = L.map('map').setView([lat, lon], 5);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        {% if lat and lon %}
+        L.marker([lat, lon]).addTo(map)
+            .bindPopup("{{ location }}")
+            .openPopup();
+        {% endif %}
+
+        window.mapInitialized = true;
+    }
 }
 </script>
 
@@ -121,65 +167,25 @@ function showTab(id) {
 <div id="overview-tab" class="tab active" onclick="showTab('overview')">Overview</div>
 <div id="stamp-tab" class="tab" onclick="showTab('stamp')">Stamp</div>
 <div id="story-tab" class="tab" onclick="showTab('story')">Story</div>
+<div id="map-tab" class="tab" onclick="showTab('map')">Map</div>
 </div>
 
-<!-- OVERVIEW -->
 <div id="overview" class="tab-content active card">
-{% if data %}
-<p><b>Sender:</b> {{ data.sender }}</p>
-<p><b>Receiver:</b> {{ data.receiver }}</p>
-<p><b>From:</b> {{ data.location_sent_from }}</p>
-<p><b>To:</b> {{ data.location_sent_to }}</p>
-<p><b>Date:</b> {{ data.date }}</p>
+<p><b>From:</b> {{ location }}</p>
 <p>{{ data.full_transcription }}</p>
-{% else %}
-<pre>{{ raw_data }}</pre>
-{% endif %}
 </div>
 
-<!-- STAMP -->
 <div id="stamp" class="tab-content card">
-{% if stamp %}
-<p><b>Country:</b> {{ stamp.country }}</p>
-<p><b>Denomination:</b> {{ stamp.denomination }}</p>
-<p><b>Era:</b> {{ stamp.year_or_era }}</p>
-<p><b>Description:</b> {{ stamp.description }}</p>
-{% else %}
-<pre>{{ stamp_raw }}</pre>
-{% endif %}
-
 <img src="data:image/png;base64,{{ stamp_image }}" width="160">
+<p>{{ stamp.description if stamp else "" }}</p>
 </div>
 
-<!-- STORY -->
 <div id="story" class="tab-content card">
-
-{% if story %}
-
-<div class="story-section">
-<div class="story-title">People & Relationship</div>
-<div>{{ story.people }}</div>
+<div class="story">{{ story.meaning if story else "" }}</div>
 </div>
 
-<div class="story-section">
-<div class="story-title">Historical Context</div>
-<div>{{ story.context }}</div>
-</div>
-
-<div class="story-section">
-<div class="story-title">Interpretation</div>
-<div>{{ story.meaning }}</div>
-</div>
-
-<div class="story-section">
-<div class="story-title">Confidence</div>
-<div>{{ story.confidence }}</div>
-</div>
-
-{% else %}
-<pre>{{ narrative }}</pre>
-{% endif %}
-
+<div id="map" class="tab-content card">
+<div id="map"></div>
 </div>
 
 {% endif %}
@@ -211,7 +217,7 @@ def index():
             input=[{
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": "Return ONLY JSON with sender, receiver, location_sent_from, location_sent_to, date, full_transcription"},
+                    {"type": "input_text", "text": "Return JSON with location_sent_from, full_transcription"},
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_b64}"},
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_b64}"}
                 ]
@@ -221,48 +227,22 @@ def index():
         raw_data = vision.output[0].content[0].text
         data = safe_json_parse(raw_data)
 
-        # --- STAMP (STRICT JSON) ---
-        stamp_resp = client.responses.create(
-            model="gpt-4.1-mini",
-            input=f"Return ONLY JSON: country, denomination, year_or_era, description for stamp: {raw_data}"
-        )
+        location = data.get("location_sent_from") if data else None
+        lat, lon = geocode_location(location) if location else (None, None)
 
-        stamp_raw = stamp_resp.output[0].content[0].text
-        stamp = safe_json_parse(stamp_raw)
-
-        # --- IMAGE ---
         cropped = crop_stamp(back_bytes)
         stamp_image = image_to_base64(cropped)
-
-        # --- STORY (STRUCTURED) ---
-        story_resp = client.responses.create(
-            model="gpt-4.1-mini",
-            input=f"""
-Return ONLY JSON:
-{{
- "people": "...",
- "context": "...",
- "meaning": "...",
- "confidence": "high/medium/low"
-}}
-
-Postcard: {raw_data}
-"""
-        )
-
-        story = safe_json_parse(story_resp.output[0].content[0].text)
 
         return render_template_string(
             HTML,
             data=data,
             raw_data=raw_data,
-            stamp=stamp,
-            stamp_raw=stamp_raw,
-            stamp_image=stamp_image,
-            story=story,
-            narrative=story_resp.output[0].content[0].text,
             front_image=front_b64,
-            back_image=back_b64
+            back_image=back_b64,
+            stamp_image=stamp_image,
+            location=location,
+            lat=lat,
+            lon=lon
         )
 
     return render_template_string(HTML)
