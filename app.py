@@ -1,102 +1,269 @@
-from flask import Flask, request, render_template
-from openai import OpenAI
-import base64
-import os
-import json
-from dotenv import load_dotenv
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PostArk</title>
 
-# --- SETUP ---
-load_dotenv()
-app = Flask(__name__)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-UPLOAD_FOLDER = "static/uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# --- HELPERS ---
-def encode_image(file):
-    return base64.b64encode(file.read()).decode("utf-8")
-
-def save_file(file, filename):
-    path = os.path.join(UPLOAD_FOLDER, filename)
-    file.seek(0)
-    file.save(path)
-    return path
-
-def safe_parse_response(text):
-    try:
-        data = json.loads(text)
-        return {
-            "overview": data.get("overview", ""),
-            "analysis": data.get("analysis", ""),
-            "story": data.get("story", ""),
-            "timeline": data.get("timeline", "")
-        }
-    except:
-        return {
-            "overview": text,
-            "analysis": "",
-            "story": "",
-            "timeline": ""
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5efe6;
+            color: #333;
         }
 
-# --- ROUTES ---
-@app.route("/", methods=["GET", "POST"])
-def index():
-    result = None
-    front_path = None
-    back_path = None
+        .container {
+            max-width: 1100px;
+            margin: auto;
+            padding: 40px 20px;
+        }
 
-    if request.method == "POST":
-        try:
-            front = request.files.get("front")
-            back = request.files.get("back")
+        /* HERO LAYOUT */
+        .hero {
+            display: grid;
+            grid-template-columns: 1.1fr 1fr;
+            gap: 50px;
+            align-items: center;
+        }
 
-            if not front or not back:
-                return render_template("index.html", result={"error": "Upload both images."})
+        /* LEFT SIDE */
+        .left {
+            text-align: left;
+        }
 
-            front_path = save_file(front, "front.jpg")
-            back_path = save_file(back, "back.jpg")
+        .logo {
+            width: 280px; /* bigger */
+            margin-bottom: 20px;
+        }
 
-            front_img = encode_image(front)
-            back_img = encode_image(back)
+        h1 {
+            font-size: 34px;
+            margin-bottom: 10px;
+        }
 
-            response = client.responses.create(
-                model="gpt-4.1-mini",
-                input=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": """
-Return ONLY valid JSON with keys:
-overview, analysis, story, timeline.
-"""
-                        },
-                        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_img}"},
-                        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_img}"}
-                    ]
-                }]
-            )
+        .description {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #555;
+            max-width: 420px;
+        }
 
-            try:
-                text_output = response.output[0].content[0].text
-            except Exception:
-                text_output = str(response)
+        /* RIGHT SIDE (UPLOAD) */
+        .upload-card {
+            background: white;
+            padding: 30px;
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
 
-            result = safe_parse_response(text_output)
+        .upload-group {
+            margin-bottom: 18px;
+        }
 
-        except Exception as e:
-            result = {"error": str(e)}
+        .upload-label {
+            font-weight: bold;
+            margin-bottom: 6px;
+            display: block;
+        }
 
-    return render_template(
-        "index.html",
-        result=result,
-        front_path=front_path,
-        back_path=back_path
-    )
+        .file-input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            background: #fafafa;
+        }
 
-# --- RUN ---
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+        .file-input:hover {
+            background: #f2ebe2;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            background-color: #6b4f3b;
+            color: white;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #5a3f2e;
+        }
+
+        /* LOADER */
+        .loader {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #eee;
+            border-top: 4px solid #6b4f3b;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            animation: spin 1s linear infinite;
+            margin: auto;
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        /* RESULTS */
+        .results {
+            margin-top: 40px;
+            background: white;
+            padding: 30px;
+            border-radius: 14px;
+        }
+
+        .images {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .images img {
+            width: 240px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .images img:hover {
+            transform: scale(1.05);
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .section h3 {
+            color: #6b4f3b;
+            margin-bottom: 6px;
+        }
+
+        .error {
+            color: red;
+            margin-top: 20px;
+        }
+
+        /* MOBILE */
+        @media (max-width: 768px) {
+            .hero {
+                grid-template-columns: 1fr;
+            }
+
+            .logo {
+                width: 220px;
+            }
+        }
+    </style>
+
+    <script>
+        function showLoader() {
+            document.getElementById("loader").style.display = "block";
+        }
+    </script>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="hero">
+
+        <!-- LEFT -->
+        <div class="left">
+            <img src="/static/logo.png" class="logo">
+
+            <h1>Bring Old Postcards Back to Life</h1>
+
+            <p class="description">
+                Upload the front and back of any postcard, and we’ll analyze it for you.
+                Instantly discover who sent it, where it came from, when it was written,
+                and what story it tells — all in a clear, easy-to-read format.
+            </p>
+        </div>
+
+        <!-- RIGHT -->
+        <div class="upload-card">
+            <form method="POST" enctype="multipart/form-data" onsubmit="showLoader()">
+
+                <div class="upload-group">
+                    <label class="upload-label">Front of Postcard</label>
+                    <input class="file-input" type="file" name="front" required>
+                </div>
+
+                <div class="upload-group">
+                    <label class="upload-label">Back of Postcard</label>
+                    <input class="file-input" type="file" name="back" required>
+                </div>
+
+                <button type="submit">Analyze Postcard</button>
+            </form>
+
+            <div id="loader" class="loader">
+                <div class="spinner"></div>
+                <p>Analyzing your postcard...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ERROR -->
+    {% if result and result.error %}
+        <p class="error">{{ result.error }}</p>
+    {% endif %}
+
+    <!-- RESULTS -->
+    {% if result and not result.error %}
+        <div class="results">
+
+            <div class="images">
+                {% if front_path %}
+                    <a href="{{ front_path }}" target="_blank">
+                        <img src="{{ front_path }}">
+                    </a>
+                {% endif %}
+                {% if back_path %}
+                    <a href="{{ back_path }}" target="_blank">
+                        <img src="{{ back_path }}">
+                    </a>
+                {% endif %}
+            </div>
+
+            <div class="section">
+                <h3>Overview</h3>
+                <p>{{ result.overview }}</p>
+            </div>
+
+            <div class="section">
+                <h3>Analysis</h3>
+                <p>{{ result.analysis }}</p>
+            </div>
+
+            <div class="section">
+                <h3>Story</h3>
+                <p>{{ result.story }}</p>
+            </div>
+
+            <div class="section">
+                <h3>Timeline</h3>
+                <p>{{ result.timeline }}</p>
+            </div>
+
+        </div>
+    {% endif %}
+
+</div>
+
+</body>
+</html>
