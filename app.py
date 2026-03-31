@@ -33,7 +33,7 @@ def safe_json_parse(text):
         cleaned = text.replace("```json", "").replace("```", "").strip()
         return json.loads(cleaned)
     except:
-        return None  # <-- IMPORTANT CHANGE
+        return None
 
 # --- HTML ---
 HTML = """
@@ -75,7 +75,8 @@ button {
 
 .card { background:#fffaf0; padding:20px; border-radius:8px; }
 
-.story { background:#fdf6e3; padding:15px; border-left:4px solid #8b6f47; }
+.story-section { margin-bottom:15px; }
+.story-title { font-weight:bold; margin-bottom:5px; }
 </style>
 
 <script>
@@ -122,8 +123,8 @@ function showTab(id) {
 <div id="story-tab" class="tab" onclick="showTab('story')">Story</div>
 </div>
 
+<!-- OVERVIEW -->
 <div id="overview" class="tab-content active card">
-
 {% if data %}
 <p><b>Sender:</b> {{ data.sender }}</p>
 <p><b>Receiver:</b> {{ data.receiver }}</p>
@@ -134,16 +135,51 @@ function showTab(id) {
 {% else %}
 <pre>{{ raw_data }}</pre>
 {% endif %}
-
 </div>
 
+<!-- STAMP -->
 <div id="stamp" class="tab-content card">
-<img src="data:image/png;base64,{{ stamp_image }}" width="160">
+{% if stamp %}
+<p><b>Country:</b> {{ stamp.country }}</p>
+<p><b>Denomination:</b> {{ stamp.denomination }}</p>
+<p><b>Era:</b> {{ stamp.year_or_era }}</p>
+<p><b>Description:</b> {{ stamp.description }}</p>
+{% else %}
 <pre>{{ stamp_raw }}</pre>
+{% endif %}
+
+<img src="data:image/png;base64,{{ stamp_image }}" width="160">
 </div>
 
+<!-- STORY -->
 <div id="story" class="tab-content card">
-<div class="story">{{ narrative }}</div>
+
+{% if story %}
+
+<div class="story-section">
+<div class="story-title">People & Relationship</div>
+<div>{{ story.people }}</div>
+</div>
+
+<div class="story-section">
+<div class="story-title">Historical Context</div>
+<div>{{ story.context }}</div>
+</div>
+
+<div class="story-section">
+<div class="story-title">Interpretation</div>
+<div>{{ story.meaning }}</div>
+</div>
+
+<div class="story-section">
+<div class="story-title">Confidence</div>
+<div>{{ story.confidence }}</div>
+</div>
+
+{% else %}
+<pre>{{ narrative }}</pre>
+{% endif %}
+
 </div>
 
 {% endif %}
@@ -175,7 +211,7 @@ def index():
             input=[{
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": "Return ONLY valid JSON with sender, receiver, location_sent_from, location_sent_to, date, full_transcription"},
+                    {"type": "input_text", "text": "Return ONLY JSON with sender, receiver, location_sent_from, location_sent_to, date, full_transcription"},
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_b64}"},
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_b64}"}
                 ]
@@ -185,31 +221,46 @@ def index():
         raw_data = vision.output[0].content[0].text
         data = safe_json_parse(raw_data)
 
-        # --- STAMP ---
-        stamp = client.responses.create(
+        # --- STAMP (STRICT JSON) ---
+        stamp_resp = client.responses.create(
             model="gpt-4.1-mini",
-            input=f"Analyze the stamp: {raw_data}"
+            input=f"Return ONLY JSON: country, denomination, year_or_era, description for stamp: {raw_data}"
         )
 
-        stamp_raw = stamp.output[0].content[0].text
+        stamp_raw = stamp_resp.output[0].content[0].text
+        stamp = safe_json_parse(stamp_raw)
 
         # --- IMAGE ---
         cropped = crop_stamp(back_bytes)
         stamp_image = image_to_base64(cropped)
 
-        # --- STORY ---
-        narrative = client.responses.create(
+        # --- STORY (STRUCTURED) ---
+        story_resp = client.responses.create(
             model="gpt-4.1-mini",
-            input=f"Explain this postcard: {raw_data}"
+            input=f"""
+Return ONLY JSON:
+{{
+ "people": "...",
+ "context": "...",
+ "meaning": "...",
+ "confidence": "high/medium/low"
+}}
+
+Postcard: {raw_data}
+"""
         )
+
+        story = safe_json_parse(story_resp.output[0].content[0].text)
 
         return render_template_string(
             HTML,
             data=data,
             raw_data=raw_data,
+            stamp=stamp,
             stamp_raw=stamp_raw,
             stamp_image=stamp_image,
-            narrative=narrative.output[0].content[0].text,
+            story=story,
+            narrative=story_resp.output[0].content[0].text,
             front_image=front_b64,
             back_image=back_b64
         )
