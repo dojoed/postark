@@ -35,7 +35,7 @@ def safe_json_parse(text):
     except:
         return {}
 
-# --- HTML ---
+# --- HTML TEMPLATE ---
 HTML = """
 <!DOCTYPE html>
 <html>
@@ -55,7 +55,7 @@ body {
     height: 100vh;
 }
 
-/* LEFT */
+/* LEFT PANEL */
 .left {
     width: 32%;
     padding: 30px;
@@ -63,21 +63,31 @@ body {
     border-right: 2px solid #d6c7a1;
 }
 
-/* RIGHT */
+/* RIGHT PANEL */
 .right {
     width: 68%;
     padding: 30px;
     overflow-y: auto;
 }
 
-/* HEADER */
-.logo-img {
-    width: 150px;
+/* HEADER (LOCKED) */
+.header {
+    margin-bottom: 25px;
+}
+
+.logo {
+    width: 160px;
     margin-bottom: 10px;
+}
+
+.title {
+    font-size: 26px;
+    font-weight: bold;
 }
 
 .tagline {
     font-size: 14px;
+    color: #6b5e45;
     margin-bottom: 20px;
 }
 
@@ -98,16 +108,17 @@ button {
     border: none;
     border-radius: 6px;
     margin-top: 15px;
+    font-size: 15px;
 }
 
 /* IMAGE PREVIEW */
 .preview img {
     width: 100%;
-    margin-top: 15px;
+    margin-top: 12px;
     border-radius: 6px;
 }
 
-/* OUTPUT */
+/* OUTPUT IMAGES */
 .output-images {
     display: flex;
     gap: 15px;
@@ -138,6 +149,7 @@ button {
     color: white;
 }
 
+/* CONTENT */
 .tab-content {
     display: none;
 }
@@ -158,6 +170,7 @@ button {
     background: #fdf6e3;
     padding: 15px;
     border-left: 4px solid #8b6f47;
+    line-height: 1.6;
 }
 </style>
 
@@ -176,23 +189,28 @@ function showTab(id) {
 
 <div class="wrapper">
 
-<!-- LEFT -->
+<!-- LEFT PANEL -->
 <div class="left">
 
-<img src="/static/logo.png" class="logo-img">
-<div class="tagline">Preserving history through postcards</div>
+<div class="header">
+    <img src="/static/logo.png" class="logo">
+    <div class="title">Postcard Archaeology</div>
+    <div class="tagline">
+        Preserving history through postcards — uncovering people, places, and forgotten stories.
+    </div>
+</div>
 
 <form method="POST" enctype="multipart/form-data">
 
 <div class="upload-box">
-    <label>Front Image</label><br>
+    <label><b>Front Image</b></label><br>
     <input type="file" name="front" required><br><br>
 
-    <label>Back Image</label><br>
+    <label><b>Back Image</b></label><br>
     <input type="file" name="back" required>
 </div>
 
-<button type="submit">Analyze</button>
+<button type="submit">🔍 Analyze Postcard</button>
 
 </form>
 
@@ -205,22 +223,25 @@ function showTab(id) {
 
 </div>
 
-<!-- RIGHT -->
+<!-- RIGHT PANEL -->
 <div class="right">
 
 {% if data %}
 
+<!-- IMAGES -->
 <div class="output-images">
 <img src="data:image/jpeg;base64,{{ front_image }}">
 <img src="data:image/jpeg;base64,{{ back_image }}">
 </div>
 
+<!-- TABS -->
 <div class="tabs">
 <div id="overview-tab" class="tab active" onclick="showTab('overview')">Overview</div>
 <div id="stamp-tab" class="tab" onclick="showTab('stamp')">Stamp</div>
 <div id="story-tab" class="tab" onclick="showTab('story')">Story</div>
 </div>
 
+<!-- OVERVIEW -->
 <div id="overview" class="tab-content active card">
 <p><b>Sender:</b> {{ data.sender }}</p>
 <p><b>Receiver:</b> {{ data.receiver }}</p>
@@ -232,6 +253,7 @@ function showTab(id) {
 <p>{{ data.full_transcription }}</p>
 </div>
 
+<!-- STAMP -->
 <div id="stamp" class="tab-content card">
 <div style="display:flex; gap:20px;">
 <img src="data:image/png;base64,{{ stamp_image }}" width="160">
@@ -244,6 +266,7 @@ function showTab(id) {
 </div>
 </div>
 
+<!-- STORY -->
 <div id="story" class="tab-content card">
 <div class="story">
 {{ narrative }}
