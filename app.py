@@ -27,7 +27,6 @@ def crop_stamp(image_bytes):
         width,
         int(height * 0.35)
     )
-
     return image.crop(crop_box)
 
 def image_to_base64(img):
@@ -47,135 +46,182 @@ HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Postcard History Agent</title>
-    <style>
-        body {
-            font-family: Arial;
-            background: #111;
-            color: #eee;
-            padding: 20px;
-        }
+<title>Postcard Archaeology</title>
 
-        .container {
-            max-width: 1000px;
-            margin: auto;
-        }
+<style>
+body {
+    margin: 0;
+    font-family: Georgia, serif;
+    background: #f5ecd9;
+    color: #2c2c2c;
+}
 
-        .card {
-            background: #1e1e1e;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 10px;
-        }
+/* Layout */
+.wrapper {
+    display: flex;
+    height: 100vh;
+}
 
-        .row {
-            display: flex;
-            gap: 20px;
-            align-items: flex-start;
-        }
+/* LEFT PANEL */
+.left {
+    width: 35%;
+    padding: 30px;
+    background: #efe3c2;
+    border-right: 2px solid #d6c7a1;
+}
 
-        .left {
-            flex: 1;
-        }
+/* RIGHT PANEL */
+.right {
+    width: 65%;
+    padding: 30px;
+    overflow-y: auto;
+}
 
-        .right {
-            flex: 2;
-        }
+/* Logo */
+.logo {
+    font-size: 26px;
+    font-weight: bold;
+    margin-bottom: 20px;
+}
 
-        .label {
-            color: #aaa;
-            font-size: 13px;
-        }
+/* Cards */
+.card {
+    background: #fffaf0;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #d6c7a1;
+    border-radius: 6px;
+}
 
-        .value {
-            font-size: 16px;
-            margin-bottom: 10px;
-        }
+/* Inputs */
+input, button {
+    margin-top: 10px;
+    margin-bottom: 15px;
+}
 
-        .story {
-            background: #0f172a;
-            padding: 16px;
-            border-radius: 10px;
-            line-height: 1.6;
-        }
+button {
+    padding: 10px 16px;
+    background: #8b6f47;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
 
-        img {
-            border-radius: 8px;
-        }
+/* Stamp Layout */
+.row {
+    display: flex;
+    gap: 20px;
+}
 
-        button {
-            padding: 10px 16px;
-            border-radius: 6px;
-            border: none;
-            background: #2563eb;
-            color: white;
-            font-weight: bold;
-        }
-    </style>
+.left-col {
+    flex: 1;
+}
+
+.right-col {
+    flex: 2;
+}
+
+/* Story */
+.story {
+    background: #fdf6e3;
+    padding: 16px;
+    border-left: 4px solid #8b6f47;
+    line-height: 1.6;
+}
+</style>
+
 </head>
 <body>
 
-<div class="container">
+<div class="wrapper">
 
-<h1>📬 Postcard History Agent</h1>
+<!-- LEFT SIDE -->
+<div class="left">
+
+<div class="logo">
+📬 Postcard Archaeology
+</div>
 
 <form method="POST" enctype="multipart/form-data">
-    <p>Front Image:</p>
-    <input type="file" name="front" required>
+    <label>Front Image</label><br>
+    <input type="file" name="front" required><br>
 
-    <p>Back Image:</p>
-    <input type="file" name="back" required>
+    <label>Back Image</label><br>
+    <input type="file" name="back" required><br>
 
-    <br><br>
     <button type="submit">Analyze</button>
 </form>
+
+{% if front_image %}
+<div class="card">
+    <h3>Front</h3>
+    <img src="data:image/jpeg;base64,{{ front_image }}" width="100%">
+</div>
+{% endif %}
+
+{% if back_image %}
+<div class="card">
+    <h3>Back</h3>
+    <img src="data:image/jpeg;base64,{{ back_image }}" width="100%">
+</div>
+{% endif %}
+
+</div>
+
+<!-- RIGHT SIDE -->
+<div class="right">
 
 {% if data %}
 
 <div class="card">
-    <h2>🧾 Overview</h2>
+<h2>Overview</h2>
 
-    <div class="value"><span class="label">Sender:</span> {{ data.sender }}</div>
-    <div class="value"><span class="label">Receiver:</span> {{ data.receiver }}</div>
-    <div class="value"><span class="label">From:</span> {{ data.location_sent_from }}</div>
-    <div class="value"><span class="label">To:</span> {{ data.location_sent_to }}</div>
-    <div class="value"><span class="label">Date:</span> {{ data.date }}</div>
+<p><b>Sender:</b> {{ data.sender }}</p>
+<p><b>Receiver:</b> {{ data.receiver }}</p>
+<p><b>From:</b> {{ data.location_sent_from }}</p>
+<p><b>To:</b> {{ data.location_sent_to }}</p>
+<p><b>Date:</b> {{ data.date }}</p>
 
-    <h3>✉️ Message</h3>
-    <p>{{ data.full_transcription }}</p>
+<h3>Message</h3>
+<p>{{ data.full_transcription }}</p>
 </div>
 
 <div class="card">
-    <h2>📮 Stamp Analysis</h2>
+<h2>Stamp Analysis</h2>
 
-    <div class="row">
-        <div class="left">
-            <img src="data:image/png;base64,{{ stamp_image }}" width="180">
-        </div>
+<div class="row">
 
-        <div class="right">
-            <div class="value"><span class="label">Country:</span> {{ stamp.country }}</div>
-            <div class="value"><span class="label">Denomination:</span> {{ stamp.denomination }}</div>
-            <div class="value"><span class="label">Era:</span> {{ stamp.year_or_era }}</div>
-            <div class="value"><span class="label">Description:</span> {{ stamp.stamp_description }}</div>
+<div class="left-col">
+<img src="data:image/png;base64,{{ stamp_image }}" width="180">
+</div>
 
-            {% if stamp.postmark_details %}
-            <div class="value"><span class="label">Postmark:</span> {{ stamp.postmark_details }}</div>
-            {% endif %}
-        </div>
-    </div>
+<div class="right-col">
+<p><b>Country:</b> {{ stamp.country }}</p>
+<p><b>Denomination:</b> {{ stamp.denomination }}</p>
+<p><b>Era:</b> {{ stamp.year_or_era }}</p>
+<p><b>Description:</b> {{ stamp.stamp_description }}</p>
+
+{% if stamp.postmark_details %}
+<p><b>Postmark:</b> {{ stamp.postmark_details }}</p>
+{% endif %}
+</div>
+
+</div>
 </div>
 
 <div class="card">
-    <h2>📖 Historical Narrative</h2>
-    <div class="story">
-        {{ narrative }}
-    </div>
+<h2>Historical Narrative</h2>
+<div class="story">
+{{ narrative }}
+</div>
 </div>
 
 {% endif %}
 
 </div>
+</div>
+
 </body>
 </html>
 """
@@ -228,14 +274,14 @@ def index():
             input=f"Explain this postcard with historical context: {data}"
         )
 
-        narrative_text = narrative.output[0].content[0].text
-
         return render_template_string(
             HTML,
             data=data,
             stamp=stamp_data,
             stamp_image=stamp_image,
-            narrative=narrative_text
+            narrative=narrative.output[0].content[0].text,
+            front_image=front_b64,
+            back_image=back_b64
         )
 
     return render_template_string(HTML, data=None)
