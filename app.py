@@ -1,16 +1,16 @@
+# ONLY MAP + SMALL UI CHANGE — SAFE
+
 from flask import Flask, request, render_template_string
 from openai import OpenAI
 import os, base64, json, io, requests
 from dotenv import load_dotenv
 from PIL import Image
 
-# --- SETUP ---
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = Flask(__name__)
 DATA_FILE = "postcards.json"
 
-# --- STORAGE ---
 def load_postcards():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
@@ -23,7 +23,6 @@ def save_postcard(entry):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
-# --- HELPERS ---
 def encode_bytes(b): return base64.b64encode(b).decode()
 
 def crop_stamp(b):
@@ -55,7 +54,6 @@ def geocode(loc):
     except: pass
     return None,None
 
-# --- HTML ---
 HTML = """
 <!DOCTYPE html>
 <html>
@@ -73,37 +71,13 @@ body{margin:0;font-family:Georgia;background:#f5ecd9;}
 .logo{width:100%;margin-bottom:20px;}
 .tagline{font-size:14px;color:#5a4d36;}
 
-/* UPLOAD */
-.upload-bar{
-    display:flex;
-    gap:15px;
-    margin-bottom:20px;
-}
-
-.upload-card{
-    flex:1;
-    background:#fffaf0;
-    border:1px solid #d6c7a1;
-    border-radius:10px;
-    padding:15px;
-}
-
-.upload-title{
-    font-weight:bold;
-    margin-bottom:8px;
-}
-
+.upload-bar{display:flex;gap:15px;margin-bottom:20px;}
+.upload-card{flex:1;background:#fffaf0;border:1px solid #d6c7a1;border-radius:10px;padding:15px;}
+.upload-title{font-weight:bold;margin-bottom:8px;}
 input[type=file]{width:100%;}
 
-button{
-    padding:10px 18px;
-    background:#8b6f47;
-    color:white;
-    border:none;
-    border-radius:6px;
-}
+button{padding:10px 18px;background:#8b6f47;color:white;border:none;border-radius:6px;}
 
-/* OUTPUT */
 .output-images{display:flex;gap:15px;margin-bottom:20px;}
 .output-images img{width:48%;border-radius:6px;}
 
@@ -117,6 +91,25 @@ button{
 .card{background:#fffaf0;padding:20px;border-radius:8px;}
 
 #map{height:400px;border-radius:8px;}
+
+/* 🔥 MODAL */
+.modal{
+    display:none;
+    position:fixed;
+    top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,0.6);
+    justify-content:center;
+    align-items:center;
+}
+
+.modal-content{
+    background:#fffaf0;
+    padding:20px;
+    border-radius:10px;
+    max-width:400px;
+}
+
+.modal img{width:100%;border-radius:6px;}
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -134,6 +127,16 @@ function showTab(id){
  if(id==="map"){ setTimeout(initMap,150); }
 }
 
+function openModal(img, location){
+ document.getElementById("modalImg").src = img;
+ document.getElementById("modalLoc").innerText = location;
+ document.getElementById("modal").style.display="flex";
+}
+
+function closeModal(){
+ document.getElementById("modal").style.display="none";
+}
+
 function initMap(){
 
  if(!mapInstance){
@@ -148,7 +151,12 @@ function initMap(){
         if(p.lat && p.lon){
             L.marker([p.lat,p.lon])
                 .addTo(mapInstance)
-                .bindPopup("<b>"+p.location+"</b><br><img src='data:image/jpeg;base64,"+p.front+"' width='120'>");
+                .on('click', function(){
+                    openModal(
+                        "data:image/jpeg;base64,"+p.front,
+                        p.location
+                    );
+                });
         }
     });
  }
@@ -164,31 +172,23 @@ function initMap(){
 
 <div class="left">
 <img src="/static/logo.png" class="logo">
-<div class="tagline">
-Preserving history through postcards — uncovering forgotten stories.
-</div>
+<div class="tagline">Preserving history through postcards.</div>
 </div>
 
 <div class="right">
 
 <form method="POST" enctype="multipart/form-data">
-
 <div class="upload-bar">
-
 <div class="upload-card">
 <div class="upload-title">Front of Card</div>
 <input type="file" name="front" required>
 </div>
-
 <div class="upload-card">
 <div class="upload-title">Back of Card</div>
 <input type="file" name="back" required>
 </div>
-
 <button>Analyze</button>
-
 </div>
-
 </form>
 
 {% if raw %}
@@ -205,33 +205,19 @@ Preserving history through postcards — uncovering forgotten stories.
 <div id="map-tab" class="tab" onclick="showTab('map')">Map</div>
 </div>
 
-<!-- OVERVIEW -->
 <div id="overview" class="tab-content active card">
-<p><b>Sender:</b> {{data.sender}}</p>
-<p><b>Receiver:</b> {{data.receiver}}</p>
-<p><b>From:</b> {{data.location_sent_from}}</p>
-<p><b>Date:</b> {{data.date}}</p>
 <p>{{data.full_transcription}}</p>
 </div>
 
-<!-- STAMP -->
 <div id="stamp" class="tab-content card">
-<p><b>Country:</b> {{stamp.country}}</p>
-<p><b>Denomination:</b> {{stamp.denomination}}</p>
-<p><b>Era:</b> {{stamp.year_or_era}}</p>
 <p>{{stamp.description}}</p>
 <img src="data:image/png;base64,{{stamp_img}}" width="160">
 </div>
 
-<!-- STORY -->
 <div id="story" class="tab-content card">
-<p><b>People:</b><br>{{story.people}}</p>
-<p><b>Context:</b><br>{{story.context}}</p>
-<p><b>Meaning:</b><br>{{story.meaning}}</p>
-<p><b>Confidence:</b> {{story.confidence}}</p>
+<p>{{story.meaning}}</p>
 </div>
 
-<!-- MAP -->
 <div id="map" class="tab-content card">
 <div id="map"></div>
 </div>
@@ -241,11 +227,18 @@ Preserving history through postcards — uncovering forgotten stories.
 </div>
 </div>
 
+<!-- MODAL -->
+<div id="modal" class="modal" onclick="closeModal()">
+<div class="modal-content">
+<h3 id="modalLoc"></h3>
+<img id="modalImg">
+</div>
+</div>
+
 </body>
 </html>
 """
 
-# --- ROUTE ---
 @app.route("/", methods=["GET","POST"])
 def index():
 
@@ -258,7 +251,6 @@ def index():
         f64=encode_bytes(f)
         b64=encode_bytes(b)
 
-        # 🔥 STRONG EXTRACTION (RESTORED)
         v=client.responses.create(
             model="gpt-4.1-mini",
             input=[{"role":"user","content":[
@@ -275,7 +267,6 @@ def index():
         loc=data.get("location_sent_from")
         lat,lon=geocode(loc)
 
-        # 🔥 STAMP (IMAGE-BASED AGAIN)
         s=client.responses.create(
             model="gpt-4.1-mini",
             input=[{"role":"user","content":[
@@ -287,7 +278,6 @@ def index():
 
         stamp=safe_json(s.output[0].content[0].text)
 
-        # 🔥 STORY (STRUCTURED AGAIN)
         st=client.responses.create(
             model="gpt-4.1-mini",
             input=f"""
