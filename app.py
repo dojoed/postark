@@ -38,7 +38,8 @@ def image_to_base64(img):
 
 def safe_json(t):
     try:
-        return json.loads(t.replace("```json","").replace("```","").strip())
+        cleaned = t.replace("```json","").replace("```","").strip()
+        return json.loads(cleaned)
     except:
         return {}
 
@@ -72,7 +73,7 @@ body{margin:0;font-family:Georgia;background:#f5ecd9;}
 .logo{width:100%;margin-bottom:20px;}
 .tagline{font-size:14px;color:#5a4d36;}
 
-/* 🔥 UPLOAD CARDS */
+/* UPLOAD */
 .upload-bar{
     display:flex;
     gap:15px;
@@ -92,9 +93,7 @@ body{margin:0;font-family:Georgia;background:#f5ecd9;}
     margin-bottom:8px;
 }
 
-input[type=file]{
-    width:100%;
-}
+input[type=file]{width:100%;}
 
 button{
     padding:10px 18px;
@@ -132,9 +131,7 @@ function showTab(id){
  document.getElementById(id).classList.add('active');
  document.getElementById(id+'-tab').classList.add('active');
 
- if(id === "map"){
-     setTimeout(initMap, 150);
- }
+ if(id==="map"){ setTimeout(initMap,150); }
 }
 
 function initMap(){
@@ -156,8 +153,7 @@ function initMap(){
     });
  }
 
- // 🔥 CRITICAL FIX
- setTimeout(()=>{ mapInstance.invalidateSize(); }, 200);
+ setTimeout(()=>{ mapInstance.invalidateSize(); },200);
 }
 </script>
 
@@ -209,19 +205,33 @@ Preserving history through postcards — uncovering forgotten stories.
 <div id="map-tab" class="tab" onclick="showTab('map')">Map</div>
 </div>
 
+<!-- OVERVIEW -->
 <div id="overview" class="tab-content active card">
+<p><b>Sender:</b> {{data.sender}}</p>
+<p><b>Receiver:</b> {{data.receiver}}</p>
+<p><b>From:</b> {{data.location_sent_from}}</p>
+<p><b>Date:</b> {{data.date}}</p>
 <p>{{data.full_transcription}}</p>
 </div>
 
+<!-- STAMP -->
 <div id="stamp" class="tab-content card">
+<p><b>Country:</b> {{stamp.country}}</p>
+<p><b>Denomination:</b> {{stamp.denomination}}</p>
+<p><b>Era:</b> {{stamp.year_or_era}}</p>
 <p>{{stamp.description}}</p>
 <img src="data:image/png;base64,{{stamp_img}}" width="160">
 </div>
 
+<!-- STORY -->
 <div id="story" class="tab-content card">
-<p>{{story.meaning}}</p>
+<p><b>People:</b><br>{{story.people}}</p>
+<p><b>Context:</b><br>{{story.context}}</p>
+<p><b>Meaning:</b><br>{{story.meaning}}</p>
+<p><b>Confidence:</b> {{story.confidence}}</p>
 </div>
 
+<!-- MAP -->
 <div id="map" class="tab-content card">
 <div id="map"></div>
 </div>
@@ -248,10 +258,12 @@ def index():
         f64=encode_bytes(f)
         b64=encode_bytes(b)
 
+        # 🔥 STRONG EXTRACTION (RESTORED)
         v=client.responses.create(
             model="gpt-4.1-mini",
             input=[{"role":"user","content":[
-                {"type":"input_text","text":"Return JSON: location_sent_from,full_transcription"},
+                {"type":"input_text","text":
+                "Return STRICT JSON with sender,receiver,location_sent_from,date,full_transcription"},
                 {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
                 {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
             ]}]
@@ -263,11 +275,31 @@ def index():
         loc=data.get("location_sent_from")
         lat,lon=geocode(loc)
 
-        s=client.responses.create(model="gpt-4.1-mini",input="Describe stamp")
-        stamp={"description":s.output[0].content[0].text}
+        # 🔥 STAMP (IMAGE-BASED AGAIN)
+        s=client.responses.create(
+            model="gpt-4.1-mini",
+            input=[{"role":"user","content":[
+                {"type":"input_text","text":
+                "Analyze ONLY the postage stamp. Return JSON: country,denomination,year_or_era,description"},
+                {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
+            ]}]
+        )
 
-        st=client.responses.create(model="gpt-4.1-mini",input=f"Explain: {raw}")
-        story={"meaning":st.output[0].content[0].text}
+        stamp=safe_json(s.output[0].content[0].text)
+
+        # 🔥 STORY (STRUCTURED AGAIN)
+        st=client.responses.create(
+            model="gpt-4.1-mini",
+            input=f"""
+Return STRICT JSON:
+people,context,meaning,confidence
+
+Postcard:
+{raw}
+"""
+        )
+
+        story=safe_json(st.output[0].content[0].text)
 
         save_postcard({"location":loc,"lat":lat,"lon":lon,"front":f64})
 
