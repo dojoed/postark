@@ -49,7 +49,8 @@ def geocode(loc):
             params={"q":loc,"format":"json"},
             headers={"User-Agent":"app"}
         ).json()
-        if r: return float(r[0]["lat"]),float(r[0]["lon"])
+        if r:
+            return float(r[0]["lat"]),float(r[0]["lon"])
     except: pass
     return None,None
 
@@ -65,36 +66,34 @@ HTML = """
 body{margin:0;font-family:Georgia;background:#f5ecd9;}
 .wrapper{display:flex;height:100vh;}
 
-.left{
-    width:28%;
-    padding:30px;
-    background:#efe3c2;
-    border-right:2px solid #d6c7a1;
-}
-
-.right{
-    width:72%;
-    padding:30px;
-    overflow-y:auto;
-}
+.left{width:28%;padding:30px;background:#efe3c2;border-right:2px solid #d6c7a1;}
+.right{width:72%;padding:30px;overflow-y:auto;}
 
 .logo{width:100%;margin-bottom:20px;}
 .tagline{font-size:14px;color:#5a4d36;}
 
-/* 🔥 TOP UPLOAD BAR */
+/* 🔥 UPLOAD CARDS */
 .upload-bar{
     display:flex;
     gap:15px;
-    background:#fffaf0;
-    padding:15px;
-    border-radius:10px;
-    border:1px solid #d6c7a1;
     margin-bottom:20px;
-    align-items:center;
 }
 
-.upload-input{
+.upload-card{
     flex:1;
+    background:#fffaf0;
+    border:1px solid #d6c7a1;
+    border-radius:10px;
+    padding:15px;
+}
+
+.upload-title{
+    font-weight:bold;
+    margin-bottom:8px;
+}
+
+input[type=file]{
+    width:100%;
 }
 
 button{
@@ -117,7 +116,6 @@ button{
 .tab-content.active{display:block;}
 
 .card{background:#fffaf0;padding:20px;border-radius:8px;}
-.section{margin-bottom:12px;}
 
 #map{height:400px;border-radius:8px;}
 </style>
@@ -125,29 +123,41 @@ button{
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
+let mapInstance;
+
 function showTab(id){
  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+
  document.getElementById(id).classList.add('active');
  document.getElementById(id+'-tab').classList.add('active');
- if(id==='map'){setTimeout(initMap,100);}
+
+ if(id === "map"){
+     setTimeout(initMap, 150);
+ }
 }
 
 function initMap(){
- if(window.mapLoaded)return;
 
- var map=L.map('map').setView([20,0],2);
- L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+ if(!mapInstance){
+    mapInstance = L.map('map').setView([20,0],2);
 
- var data={{postcards|tojson}};
- data.forEach(p=>{
-  if(p.lat && p.lon){
-   L.marker([p.lat,p.lon]).addTo(map)
-   .bindPopup("<b>"+p.location+"</b><br><img src='data:image/jpeg;base64,"+p.front+"' width='120'>");
-  }
- });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
+        .addTo(mapInstance);
 
- window.mapLoaded=true;
+    const data = {{postcards|tojson}};
+
+    data.forEach(p=>{
+        if(p.lat && p.lon){
+            L.marker([p.lat,p.lon])
+                .addTo(mapInstance)
+                .bindPopup("<b>"+p.location+"</b><br><img src='data:image/jpeg;base64,"+p.front+"' width='120'>");
+        }
+    });
+ }
+
+ // 🔥 CRITICAL FIX
+ setTimeout(()=>{ mapInstance.invalidateSize(); }, 200);
 }
 </script>
 
@@ -156,7 +166,6 @@ function initMap(){
 
 <div class="wrapper">
 
-<!-- LEFT CLEAN PANEL -->
 <div class="left">
 <img src="/static/logo.png" class="logo">
 <div class="tagline">
@@ -164,15 +173,24 @@ Preserving history through postcards — uncovering forgotten stories.
 </div>
 </div>
 
-<!-- RIGHT CONTENT -->
 <div class="right">
 
 <form method="POST" enctype="multipart/form-data">
 
 <div class="upload-bar">
-<input class="upload-input" type="file" name="front" required>
-<input class="upload-input" type="file" name="back" required>
+
+<div class="upload-card">
+<div class="upload-title">Front of Card</div>
+<input type="file" name="front" required>
+</div>
+
+<div class="upload-card">
+<div class="upload-title">Back of Card</div>
+<input type="file" name="back" required>
+</div>
+
 <button>Analyze</button>
+
 </div>
 
 </form>
@@ -191,33 +209,19 @@ Preserving history through postcards — uncovering forgotten stories.
 <div id="map-tab" class="tab" onclick="showTab('map')">Map</div>
 </div>
 
-<!-- OVERVIEW -->
 <div id="overview" class="tab-content active card">
-<div class="section"><b>Sender:</b> {{data.sender}}</div>
-<div class="section"><b>Receiver:</b> {{data.receiver}}</div>
-<div class="section"><b>From:</b> {{data.location_sent_from}}</div>
-<div class="section"><b>Date:</b> {{data.date}}</div>
 <p>{{data.full_transcription}}</p>
 </div>
 
-<!-- STAMP -->
 <div id="stamp" class="tab-content card">
-<p><b>Country:</b> {{stamp.country}}</p>
-<p><b>Denomination:</b> {{stamp.denomination}}</p>
-<p><b>Era:</b> {{stamp.year_or_era}}</p>
 <p>{{stamp.description}}</p>
 <img src="data:image/png;base64,{{stamp_img}}" width="160">
 </div>
 
-<!-- STORY -->
 <div id="story" class="tab-content card">
-<p><b>People:</b><br>{{story.people}}</p>
-<p><b>Context:</b><br>{{story.context}}</p>
-<p><b>Meaning:</b><br>{{story.meaning}}</p>
-<p><b>Confidence:</b> {{story.confidence}}</p>
+<p>{{story.meaning}}</p>
 </div>
 
-<!-- MAP -->
 <div id="map" class="tab-content card">
 <div id="map"></div>
 </div>
@@ -244,12 +248,10 @@ def index():
         f64=encode_bytes(f)
         b64=encode_bytes(b)
 
-        # 🔥 STRONG EXTRACTION
         v=client.responses.create(
             model="gpt-4.1-mini",
             input=[{"role":"user","content":[
-                {"type":"input_text","text":
-                "Return STRICT JSON with sender,receiver,location_sent_from,date,full_transcription"},
+                {"type":"input_text","text":"Return JSON: location_sent_from,full_transcription"},
                 {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
                 {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
             ]}]
@@ -261,29 +263,11 @@ def index():
         loc=data.get("location_sent_from")
         lat,lon=geocode(loc)
 
-        # 🔥 STAMP FIX
-        s=client.responses.create(
-            model="gpt-4.1-mini",
-            input=[{"role":"user","content":[
-                {"type":"input_text","text":
-                "Analyze ONLY the postage stamp. Return JSON: country,denomination,year_or_era,description"},
-                {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
-            ]}]
-        )
-        stamp=safe_json(s.output[0].content[0].text)
+        s=client.responses.create(model="gpt-4.1-mini",input="Describe stamp")
+        stamp={"description":s.output[0].content[0].text}
 
-        # 🔥 STORY FIX
-        st=client.responses.create(
-            model="gpt-4.1-mini",
-            input=f"""
-Return JSON:
-people,context,meaning,confidence
-
-Postcard:
-{raw}
-"""
-        )
-        story=safe_json(st.output[0].content[0].text)
+        st=client.responses.create(model="gpt-4.1-mini",input=f"Explain: {raw}")
+        story={"meaning":st.output[0].content[0].text}
 
         save_postcard({"location":loc,"lat":lat,"lon":lon,"front":f64})
 
