@@ -1,49 +1,186 @@
-<!-- ONLY showing the NEW part added to your existing file -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PostArk</title>
 
-{% if result and not result.error %}
-<div class="results">
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5efe6;
+            color: #333;
+        }
 
-    <div class="images">
-        {% if front_path %}
-            <a href="{{ front_path }}" target="_blank">
-                <img src="{{ front_path }}">
-            </a>
-        {% endif %}
+        .container {
+            max-width: 1100px;
+            margin: auto;
+            padding: 30px 20px;
+        }
 
-        {% if back_path %}
-            <a href="{{ back_path }}" target="_blank">
-                <img src="{{ back_path }}">
-            </a>
-        {% endif %}
+        .hero {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            width: 220px;
+            margin-bottom: 20px;
+        }
+
+        .upload-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+        }
+
+        .upload-box {
+            border: 2px dashed #d6c7b5;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            text-align: center;
+            background: #faf7f2;
+            cursor: pointer;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            background-color: #6b4f3b;
+            color: white;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .loader {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #eee;
+            border-top: 4px solid #6b4f3b;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            animation: spin 1s linear infinite;
+            margin: auto;
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        .results {
+            margin-top: 30px;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+        }
+
+        .images img {
+            width: 220px;
+            margin-right: 10px;
+            border-radius: 8px;
+        }
+
+        .error {
+            color: red;
+        }
+
+        @media (max-width: 768px) {
+            .hero {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+
+    <script>
+        function showLoader() {
+            document.getElementById("loader").style.display = "block";
+        }
+    </script>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="hero">
+
+        <div>
+            <img src="/static/logo.png" class="logo">
+            <h1>PostArk</h1>
+            <p>Upload a postcard and uncover its story.</p>
+        </div>
+
+        <div class="upload-card">
+            <form method="POST" enctype="multipart/form-data" onsubmit="showLoader()">
+                <label class="upload-box">
+                    Front Image
+                    <input type="file" name="front" required>
+                </label>
+
+                <label class="upload-box">
+                    Back Image
+                    <input type="file" name="back" required>
+                </label>
+
+                <button type="submit">Analyze Postcard</button>
+            </form>
+
+            <div id="loader" class="loader">
+                <div class="spinner"></div>
+                <p>Analyzing postcard...</p>
+            </div>
+        </div>
+
     </div>
 
-    <div class="section">
-        <h3>Overview</h3>
-        <p>{{ result.overview }}</p>
-    </div>
+    {% if result and result.error %}
+        <p class="error">{{ result.error }}</p>
+    {% endif %}
 
-    <div class="section">
-        <h3>Analysis</h3>
-        <p>{{ result.analysis }}</p>
-    </div>
+    {% if result and not result.error %}
+        <div class="results">
 
-    <div class="section">
-        <h3>Story</h3>
-        <p>{{ result.story }}</p>
-    </div>
+            <div class="images">
+                {% if front_path %}
+                    <img src="{{ front_path }}">
+                {% endif %}
+                {% if back_path %}
+                    <img src="{{ back_path }}">
+                {% endif %}
+            </div>
 
-    <div class="section">
-        <h3>Timeline</h3>
-        <p>{{ result.timeline }}</p>
-    </div>
+            <h3>Overview</h3>
+            <p>{{ result.overview }}</p>
 
-    <!-- PDF DOWNLOAD -->
-    <form method="POST" action="/download_pdf">
-        <input type="hidden" name="data" value='{{ result | tojson | safe }}'>
-        <input type="hidden" name="front_path" value="{{ front_path }}">
-        <input type="hidden" name="back_path" value="{{ back_path }}">
-        <button type="submit">Download PDF</button>
-    </form>
+            <h3>Analysis</h3>
+            <p>{{ result.analysis }}</p>
+
+            <h3>Story</h3>
+            <p>{{ result.story }}</p>
+
+            <h3>Timeline</h3>
+            <p>{{ result.timeline }}</p>
+
+        </div>
+    {% endif %}
 
 </div>
-{% endif %}
+
+</body>
+</html>
