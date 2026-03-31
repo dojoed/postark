@@ -41,9 +41,7 @@ def geocode_location(location):
         url = "https://nominatim.openstreetmap.org/search"
         params = {"q": location, "format": "json"}
         headers = {"User-Agent": "postcard-app"}
-
         res = requests.get(url, params=params, headers=headers).json()
-
         if res:
             return float(res[0]["lat"]), float(res[0]["lon"])
     except:
@@ -62,13 +60,29 @@ HTML = """
 <style>
 body { margin:0; font-family: Georgia; background:#f5ecd9; }
 .wrapper { display:flex; height:100vh; }
+
 .left { width:32%; padding:30px; background:#efe3c2; border-right:2px solid #d6c7a1; }
 .right { width:68%; padding:30px; overflow-y:auto; }
 
-.logo { width:160px; margin-bottom:10px; }
-.tagline { font-size:14px; margin-bottom:20px; }
+/* LOGO FIX */
+.logo {
+    width:220px;
+    margin-bottom:10px;
+}
 
-.upload-box { background:#fdf6e3; border:2px dashed #cbb88a; padding:20px; border-radius:8px; }
+.tagline {
+    font-size:15px;
+    margin-bottom:25px;
+    line-height:1.4;
+}
+
+/* UPLOAD */
+.upload-box {
+    background:#fdf6e3;
+    border:2px dashed #cbb88a;
+    padding:20px;
+    border-radius:8px;
+}
 
 button {
     width:100%;
@@ -80,9 +94,11 @@ button {
     margin-top:15px;
 }
 
+/* OUTPUT */
 .output-images { display:flex; gap:15px; margin-bottom:20px; }
 .output-images img { width:48%; border-radius:6px; }
 
+/* TABS */
 .tabs { display:flex; gap:10px; margin-bottom:15px; }
 .tab { padding:8px 14px; background:#d6c7a1; cursor:pointer; border-radius:6px; }
 .tab.active { background:#8b6f47; color:white; }
@@ -92,12 +108,9 @@ button {
 
 .card { background:#fffaf0; padding:20px; border-radius:8px; }
 
-.story { background:#fdf6e3; padding:15px; border-left:4px solid #8b6f47; }
+.story-section { margin-bottom:15px; }
 
-#map {
-    height: 400px;
-    border-radius: 8px;
-}
+#map { height:400px; border-radius:8px; }
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -106,27 +119,22 @@ button {
 function showTab(id) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
     document.getElementById(id).classList.add('active');
     document.getElementById(id+'-tab').classList.add('active');
 
-    if(id === "map") {
-        setTimeout(initMap, 100);
-    }
+    if(id === "map") setTimeout(initMap, 100);
 }
 
 function initMap() {
     if (!window.mapInitialized) {
         var lat = {{ lat if lat else 0 }};
         var lon = {{ lon if lon else 0 }};
-
         var map = L.map('map').setView([lat, lon], 5);
-
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         {% if lat and lon %}
-        L.marker([lat, lon]).addTo(map)
-            .bindPopup("{{ location }}")
-            .openPopup();
+        L.marker([lat, lon]).addTo(map).bindPopup("{{ location }}").openPopup();
         {% endif %}
 
         window.mapInitialized = true;
@@ -141,7 +149,9 @@ function initMap() {
 
 <div class="left">
 <img src="/static/logo.png" class="logo">
-<div class="tagline">Preserving history through postcards</div>
+<div class="tagline">
+Preserving history through postcards — uncovering people, places, and forgotten stories.
+</div>
 
 <form method="POST" enctype="multipart/form-data">
 <div class="upload-box">
@@ -170,20 +180,43 @@ function initMap() {
 <div id="map-tab" class="tab" onclick="showTab('map')">Map</div>
 </div>
 
+<!-- OVERVIEW -->
 <div id="overview" class="tab-content active card">
+<p><b>Sender:</b> {{ data.sender if data else "" }}</p>
+<p><b>Receiver:</b> {{ data.receiver if data else "" }}</p>
 <p><b>From:</b> {{ location }}</p>
-<p>{{ data.full_transcription }}</p>
+<p>{{ data.full_transcription if data else raw_data }}</p>
 </div>
 
+<!-- STAMP -->
 <div id="stamp" class="tab-content card">
+{% if stamp %}
+<p><b>Country:</b> {{ stamp.country }}</p>
+<p><b>Denomination:</b> {{ stamp.denomination }}</p>
+<p><b>Era:</b> {{ stamp.year_or_era }}</p>
+<p><b>Description:</b> {{ stamp.description }}</p>
+{% else %}
+<pre>{{ stamp_raw }}</pre>
+{% endif %}
+<br>
 <img src="data:image/png;base64,{{ stamp_image }}" width="160">
-<p>{{ stamp.description if stamp else "" }}</p>
 </div>
 
+<!-- STORY -->
 <div id="story" class="tab-content card">
-<div class="story">{{ story.meaning if story else "" }}</div>
+
+{% if story %}
+<div class="story-section"><b>People:</b><br>{{ story.people }}</div>
+<div class="story-section"><b>Context:</b><br>{{ story.context }}</div>
+<div class="story-section"><b>Meaning:</b><br>{{ story.meaning }}</div>
+<div class="story-section"><b>Confidence:</b> {{ story.confidence }}</div>
+{% else %}
+<pre>{{ narrative }}</pre>
+{% endif %}
+
 </div>
 
+<!-- MAP -->
 <div id="map" class="tab-content card">
 <div id="map"></div>
 </div>
@@ -202,6 +235,7 @@ function initMap() {
 def index():
 
     if request.method == "POST":
+
         front = request.files["front"]
         back = request.files["back"]
 
@@ -217,7 +251,7 @@ def index():
             input=[{
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": "Return JSON with location_sent_from, full_transcription"},
+                    {"type": "input_text", "text": "Return JSON: sender, receiver, location_sent_from, full_transcription"},
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_b64}"},
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_b64}"}
                 ]
@@ -230,6 +264,27 @@ def index():
         location = data.get("location_sent_from") if data else None
         lat, lon = geocode_location(location) if location else (None, None)
 
+        # --- STAMP ---
+        stamp_resp = client.responses.create(
+            model="gpt-4.1-mini",
+            input=f"Return JSON: country, denomination, year_or_era, description for stamp: {raw_data}"
+        )
+        stamp_raw = stamp_resp.output[0].content[0].text
+        stamp = safe_json_parse(stamp_raw)
+
+        # --- STORY ---
+        story_resp = client.responses.create(
+            model="gpt-4.1-mini",
+            input=f"""
+Return JSON:
+people, context, meaning, confidence
+
+Postcard: {raw_data}
+"""
+        )
+        story = safe_json_parse(story_resp.output[0].content[0].text)
+
+        # --- IMAGE ---
         cropped = crop_stamp(back_bytes)
         stamp_image = image_to_base64(cropped)
 
@@ -237,9 +292,13 @@ def index():
             HTML,
             data=data,
             raw_data=raw_data,
+            stamp=stamp,
+            stamp_raw=stamp_raw,
+            story=story,
+            narrative=story_resp.output[0].content[0].text,
+            stamp_image=stamp_image,
             front_image=front_b64,
             back_image=back_b64,
-            stamp_image=stamp_image,
             location=location,
             lat=lat,
             lon=lon
