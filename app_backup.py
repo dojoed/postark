@@ -289,10 +289,10 @@ async function submitForm(){
       </div>
 
       <div class="tabs">
-        <div class="tab active" id="tab-overview" onclick="switchTab('overview')">Overview</div>
-        <div class="tab" id="tab-story" onclick="switchTab('story')">Story</div>
-        <div class="tab" id="tab-stamp" onclick="switchTab('stamp')">Stamp</div>
-        <div class="tab" id="tab-map" onclick="switchTab('map')">Map</div>
+        <div class="tab active" onclick="switchTab('overview')">Overview</div>
+        <div class="tab" onclick="switchTab('story')">Story</div>
+        <div class="tab" onclick="switchTab('stamp')">Stamp</div>
+        <div class="tab" onclick="switchTab('map')">Map</div>
       </div>
 
       <div id="content-overview" class="tab-content active">
@@ -313,9 +313,7 @@ async function submitForm(){
       <div id="content-map" class="tab-content">
         <div id="detailMap"></div>
       </div>
-    
     `;
-    switchTab('overview');
 
   } catch(err){
     console.error(err);
