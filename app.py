@@ -1,269 +1,73 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>PostArk</title>
+from flask import Flask, request, render_template
+from openai import OpenAI
+import base64
+import os
+from dotenv import load_dotenv
 
-    <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background-color: #f5efe6;
-            color: #333;
-        }
+# --- SETUP ---
+load_dotenv()
+app = Flask(__name__)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-        .container {
-            max-width: 1100px;
-            margin: auto;
-            padding: 40px 20px;
-        }
+# --- HELPERS ---
+def encode_image(file):
+    return base64.b64encode(file.read()).decode("utf-8")
 
-        /* HERO LAYOUT */
-        .hero {
-            display: grid;
-            grid-template-columns: 1.1fr 1fr;
-            gap: 50px;
-            align-items: center;
-        }
+# --- ROUTES ---
+@app.route("/", methods=["GET", "POST"])
+def index():
+    result = None
+    front_path = None
+    back_path = None
 
-        /* LEFT SIDE */
-        .left {
-            text-align: left;
-        }
+    if request.method == "POST":
+        try:
+            front = request.files.get("front")
+            back = request.files.get("back")
 
-        .logo {
-            width: 280px; /* bigger */
-            margin-bottom: 20px;
-        }
+            if not front or not back:
+                return render_template("index.html", result={"error": "Please upload both images."})
 
-        h1 {
-            font-size: 34px;
-            margin-bottom: 10px;
-        }
+            # Save files
+            os.makedirs("static/uploads", exist_ok=True)
 
-        .description {
-            font-size: 16px;
-            line-height: 1.6;
-            color: #555;
-            max-width: 420px;
-        }
+            front_path = f"static/uploads/front_{front.filename}"
+            back_path = f"static/uploads/back_{back.filename}"
 
-        /* RIGHT SIDE (UPLOAD) */
-        .upload-card {
-            background: white;
-            padding: 30px;
-            border-radius: 14px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-        }
+            front.save(front_path)
+            back.save(back_path)
 
-        .upload-group {
-            margin-bottom: 18px;
-        }
+            # Encode for OpenAI
+            front_img = encode_image(open(front_path, "rb"))
+            back_img = encode_image(open(back_path, "rb"))
 
-        .upload-label {
-            font-weight: bold;
-            margin-bottom: 6px;
-            display: block;
-        }
+            response = client.responses.create(
+                model="gpt-4.1-mini",
+                input=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": "Analyze this postcard. Return JSON with: overview, analysis, story, timeline."},
+                        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_img}"},
+                        {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_img}"}
+                    ]
+                }]
+            )
 
-        .file-input {
-            width: 100%;
-            padding: 10px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-            background: #fafafa;
-        }
+            output = response.output[0].content[0].text
 
-        .file-input:hover {
-            background: #f2ebe2;
-        }
-
-        button {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            background-color: #6b4f3b;
-            color: white;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-
-        button:hover {
-            background-color: #5a3f2e;
-        }
-
-        /* LOADER */
-        .loader {
-            display: none;
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .spinner {
-            border: 4px solid #eee;
-            border-top: 4px solid #6b4f3b;
-            border-radius: 50%;
-            width: 36px;
-            height: 36px;
-            animation: spin 1s linear infinite;
-            margin: auto;
-        }
-
-        @keyframes spin {
-            100% { transform: rotate(360deg); }
-        }
-
-        /* RESULTS */
-        .results {
-            margin-top: 40px;
-            background: white;
-            padding: 30px;
-            border-radius: 14px;
-        }
-
-        .images {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .images img {
-            width: 240px;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-
-        .images img:hover {
-            transform: scale(1.05);
-        }
-
-        .section {
-            margin-bottom: 20px;
-        }
-
-        .section h3 {
-            color: #6b4f3b;
-            margin-bottom: 6px;
-        }
-
-        .error {
-            color: red;
-            margin-top: 20px;
-        }
-
-        /* MOBILE */
-        @media (max-width: 768px) {
-            .hero {
-                grid-template-columns: 1fr;
+            result = {
+                "overview": output,
+                "analysis": "",
+                "story": "",
+                "timeline": ""
             }
 
-            .logo {
-                width: 220px;
-            }
-        }
-    </style>
+        except Exception as e:
+            result = {"error": str(e)}
 
-    <script>
-        function showLoader() {
-            document.getElementById("loader").style.display = "block";
-        }
-    </script>
-</head>
+    return render_template("index.html", result=result, front_path=front_path, back_path=back_path)
 
-<body>
-
-<div class="container">
-
-    <div class="hero">
-
-        <!-- LEFT -->
-        <div class="left">
-            <img src="/static/logo.png" class="logo">
-
-            <h1>Bring Old Postcards Back to Life</h1>
-
-            <p class="description">
-                Upload the front and back of any postcard, and we’ll analyze it for you.
-                Instantly discover who sent it, where it came from, when it was written,
-                and what story it tells — all in a clear, easy-to-read format.
-            </p>
-        </div>
-
-        <!-- RIGHT -->
-        <div class="upload-card">
-            <form method="POST" enctype="multipart/form-data" onsubmit="showLoader()">
-
-                <div class="upload-group">
-                    <label class="upload-label">Front of Postcard</label>
-                    <input class="file-input" type="file" name="front" required>
-                </div>
-
-                <div class="upload-group">
-                    <label class="upload-label">Back of Postcard</label>
-                    <input class="file-input" type="file" name="back" required>
-                </div>
-
-                <button type="submit">Analyze Postcard</button>
-            </form>
-
-            <div id="loader" class="loader">
-                <div class="spinner"></div>
-                <p>Analyzing your postcard...</p>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- ERROR -->
-    {% if result and result.error %}
-        <p class="error">{{ result.error }}</p>
-    {% endif %}
-
-    <!-- RESULTS -->
-    {% if result and not result.error %}
-        <div class="results">
-
-            <div class="images">
-                {% if front_path %}
-                    <a href="{{ front_path }}" target="_blank">
-                        <img src="{{ front_path }}">
-                    </a>
-                {% endif %}
-                {% if back_path %}
-                    <a href="{{ back_path }}" target="_blank">
-                        <img src="{{ back_path }}">
-                    </a>
-                {% endif %}
-            </div>
-
-            <div class="section">
-                <h3>Overview</h3>
-                <p>{{ result.overview }}</p>
-            </div>
-
-            <div class="section">
-                <h3>Analysis</h3>
-                <p>{{ result.analysis }}</p>
-            </div>
-
-            <div class="section">
-                <h3>Story</h3>
-                <p>{{ result.story }}</p>
-            </div>
-
-            <div class="section">
-                <h3>Timeline</h3>
-                <p>{{ result.timeline }}</p>
-            </div>
-
-        </div>
-    {% endif %}
-
-</div>
-
-</body>
-</html>
+# --- RUN ---
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
