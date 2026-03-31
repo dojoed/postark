@@ -1,50 +1,24 @@
-import streamlit as st
+from flask import Flask, request, render_template_string
 from openai import OpenAI
 import os
-from dotenv import load_dotenv
 import base64
 import json
-from serpapi import GoogleSearch
+from dotenv import load_dotenv
 from PIL import Image
-
-# --- PAGE CONFIG ---
-st.set_page_config(
-    page_title="Postcard History Agent",
-    page_icon="📬",
-    layout="wide"
-)
-
-# --- CLEAN SPACING ---
-st.markdown("""
-<style>
-.block-container {
-    padding-top: 1.2rem !important;
-    padding-bottom: 2rem;
-}
-h1 {
-    margin-top: 0rem;
-}
-.story {
-    font-size: 16px;
-    line-height: 1.6;
-    background: #0f172a;
-    padding: 18px;
-    border-radius: 12px;
-}
-</style>
-""", unsafe_allow_html=True)
+import io
 
 # --- SETUP ---
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+app = Flask(__name__)
+
 # --- HELPERS ---
-def encode_image(uploaded_file):
-    return base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
+def encode_image(file):
+    return base64.b64encode(file.read()).decode("utf-8")
 
-
-def crop_stamp(uploaded_file):
-    image = Image.open(uploaded_file)
+def crop_stamp(file):
+    image = Image.open(file)
     width, height = image.size
 
     crop_box = (
@@ -56,192 +30,169 @@ def crop_stamp(uploaded_file):
 
     return image.crop(crop_box)
 
+def image_to_base64(img):
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
 
-def web_search(query):
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": os.getenv("SERPAPI_API_KEY"),
-        "num": 5
-    }
-
-    search = GoogleSearch(params)
-    results = search.get_dict()
-
-    snippets = []
-    if "organic_results" in results:
-        for r in results["organic_results"]:
-            snippets.append(r.get("snippet", ""))
-
-    return "\n".join(snippets)
-
-
-# --- HEADER ---
-st.title("📬 Postcard History Agent")
-st.caption("Uncover the story behind historical postcards — people, places, and stamps")
-
-st.divider()
-
-# --- UPLOAD ---
-st.subheader("Upload Postcard")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    front_file = st.file_uploader("Front Image", type=["jpg", "png"])
-
-with col2:
-    back_file = st.file_uploader("Back Image", type=["jpg", "png"])
-
-# --- DISPLAY IMAGES ---
-if front_file or back_file:
-    st.divider()
-
-    img_col1, img_col2 = st.columns(2)
-
-    with img_col1:
-        if front_file:
-            st.image(front_file, caption="Front", use_container_width=True)
-
-    with img_col2:
-        if back_file:
-            st.image(back_file, caption="Back", use_container_width=True)
-
-
-# --- MAIN ANALYSIS ---
-if st.button("🔍 Analyze Postcard") and front_file and back_file:
-
-    with st.status("Analyzing postcard...", expanded=True):
-
-        front_img = encode_image(front_file)
-        back_img = encode_image(back_file)
-
-        # --- STEP 1: VISION ---
-        st.write("🔍 Extracting postcard details...")
-
-        vision_prompt = """
-        Extract postcard data as JSON:
-        {
-          "sender": "",
-          "receiver": "",
-          "location_sent_from": "",
-          "location_sent_to": "",
-          "date": "",
-          "full_transcription": "",
-          "observations": ""
+# --- HTML TEMPLATE ---
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Postcard History Agent</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #111;
+            color: #eee;
+            padding: 20px;
         }
-        """
+        .container {
+            max-width: 1000px;
+            margin: auto;
+        }
+        .card {
+            background: #1e1e1e;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+        }
+        .row {
+            display: flex;
+            gap: 20px;
+        }
+        img {
+            max-width: 100%;
+            border-radius: 8px;
+        }
+        .story {
+            background: #0f172a;
+            padding: 16px;
+            border-radius: 10px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
 
-        response = client.responses.create(
+<h1>📬 Postcard History Agent</h1>
+
+<form method="POST" enctype="multipart/form-data">
+    <p>Front Image:</p>
+    <input type="file" name="front" required>
+    <p>Back Image:</p>
+    <input type="file" name="back" required>
+    <br><br>
+    <button type="submit">Analyze</button>
+</form>
+
+{% if data %}
+
+<div class="card">
+    <h2>🧾 Postcard Details</h2>
+    <pre>{{ data }}</pre>
+</div>
+
+<div class="card">
+    <h2>📮 Stamp Analysis</h2>
+
+    <div class="row">
+        <div style="flex:1;">
+            <img src="data:image/png;base64,{{ stamp_image }}">
+        </div>
+
+        <div style="flex:2;">
+            <h3>Details</h3>
+            <pre>{{ stamp_data }}</pre>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📖 Historical Narrative</h2>
+    <div class="story">
+        {{ narrative }}
+    </div>
+</div>
+
+{% endif %}
+
+</div>
+</body>
+</html>
+"""
+
+# --- ROUTE ---
+@app.route("/", methods=["GET", "POST"])
+def index():
+
+    if request.method == "POST":
+        front = request.files["front"]
+        back = request.files["back"]
+
+        front_bytes = front.read()
+        back_bytes = back.read()
+
+        front_base64 = base64.b64encode(front_bytes).decode()
+        back_base64 = base64.b64encode(back_bytes).decode()
+
+        # --- VISION ---
+        vision = client.responses.create(
             model="gpt-4.1-mini",
             input=[{
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": vision_prompt},
-                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_img}"},
-                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_img}"}
+                    {"type": "input_text", "text": "Extract postcard data as JSON"},
+                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_base64}"},
+                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_base64}"}
                 ]
             }]
         )
 
-        structured = response.output[0].content[0].text
-        structured = structured.replace("```json", "").replace("```", "").strip()
+        data = vision.output[0].content[0].text
 
-        try:
-            data = json.loads(structured)
-        except:
-            st.error("Failed to parse extracted data")
-            st.text(structured)
-            st.stop()
-
-        # --- STEP 2: STAMP ---
-        st.write("📮 Analyzing stamp...")
-
-        stamp_prompt = """
-        Analyze stamp and return JSON:
-        {
-          "country": "",
-          "denomination": "",
-          "year_or_era": "",
-          "stamp_description": "",
-          "postmark_details": ""
-        }
-        """
-
-        stamp_response = client.responses.create(
+        # --- STAMP ANALYSIS ---
+        stamp = client.responses.create(
             model="gpt-4.1-mini",
-            input=[{
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": stamp_prompt},
-                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_img}"},
-                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_img}"}
-                ]
-            }]
+            input=f"Analyze the stamp and return structured details: {data}"
         )
 
-        stamp_raw = stamp_response.output[0].content[0].text
-        stamp_raw = stamp_raw.replace("```json", "").replace("```", "").strip()
+        stamp_data = stamp.output[0].content[0].text
 
-        try:
-            stamp_data = json.loads(stamp_raw)
-        except:
-            stamp_data = {"error": "Could not parse stamp data", "raw": stamp_raw}
+        # --- STAMP IMAGE ---
+        back_img = Image.open(io.BytesIO(back_bytes))
+        width, height = back_img.size
 
-        stamp_image = crop_stamp(back_file)
+        crop_box = (
+            int(width * 0.65),
+            0,
+            width,
+            int(height * 0.35)
+        )
 
-        # --- STEP 3: RESEARCH ---
-        st.write("🌐 Running research...")
+        cropped = back_img.crop(crop_box)
+        stamp_image = image_to_base64(cropped)
 
-        research_results = {}
-
-        for key in ["sender", "receiver"]:
-            val = data.get(key)
-            if val:
-                query = f"{val} genealogy history"
-                st.write(f"🧠 Searching: {query}")
-                research_results[val] = web_search(query)
-
-        # --- STEP 4: NARRATIVE ---
-        st.write("📖 Generating narrative...")
-
+        # --- NARRATIVE ---
         narrative = client.responses.create(
             model="gpt-4.1-mini",
-            input=f"Explain this postcard with context: {data}"
+            input=f"Explain the historical context of this postcard: {data}"
         )
 
         narrative_text = narrative.output[0].content[0].text
 
-    # --- RESULTS ---
-    st.divider()
+        return render_template_string(
+            HTML,
+            data=data,
+            stamp_data=stamp_data,
+            stamp_image=stamp_image,
+            narrative=narrative_text
+        )
 
-    tab1, tab2, tab3 = st.tabs(["🧾 Overview", "📮 Stamp", "📖 Story"])
+    return render_template_string(HTML, data=None)
 
-    # OVERVIEW
-    with tab1:
-        st.subheader("Postcard Details")
-        st.json(data)
 
-    # STAMP TAB (IMAGE LEFT, DETAILS RIGHT)
-    with tab2:
-        st.subheader("📮 Stamp Analysis")
-
-        col1, col2 = st.columns([1, 2])
-
-        with col1:
-            st.image(stamp_image, caption="Detected Stamp", width=180)
-
-        with col2:
-            st.markdown("### Details")
-            st.markdown(f"**Country:** {stamp_data.get('country', 'Unknown')}")
-            st.markdown(f"**Denomination:** {stamp_data.get('denomination', 'Unknown')}")
-            st.markdown(f"**Era:** {stamp_data.get('year_or_era', 'Unknown')}")
-            st.markdown(f"**Description:** {stamp_data.get('stamp_description', 'N/A')}")
-
-            if stamp_data.get("postmark_details"):
-                st.markdown(f"**Postmark:** {stamp_data.get('postmark_details')}")
-
-    # STORY
-    with tab3:
-        st.subheader("Historical Narrative")
-        st.markdown(f"<div class='story'>{narrative_text}</div>", unsafe_allow_html=True)
+if __name__ == "__main__":
+    app.run(debug=True)
