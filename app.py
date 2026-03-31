@@ -545,127 +545,131 @@ def history():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    if "front" not in request.files or "back" not in request.files:
-        return jsonify({"error": "Missing files"}), 400
+    try:
+        if "front" not in request.files or "back" not in request.files:
+            return jsonify({"error": "Missing files"}), 400
 
-    front_file = request.files["front"]
-    back_file = request.files["back"]
+        front_file = request.files["front"]
+        back_file = request.files["back"]
 
-    if front_file.filename == "" or back_file.filename == "":
-        return jsonify({"error": "Empty file upload"}), 400
+        if front_file.filename == "" or back_file.filename == "":
+            return jsonify({"error": "Empty file upload"}), 400
 
-    f = front_file.read()
-    b = back_file.read()
+        f = front_file.read()
+        b = back_file.read()
 
-    # ✅ FIX: define these BEFORE using them
-    f64 = encode_bytes(f)
-    b64 = encode_bytes(b)
+        # ✅ FIX: define these BEFORE using them
+        f64 = encode_bytes(f)
+        b64 = encode_bytes(b)
 
-    # OCR
-    ocr = client.responses.create(
-        model="gpt-4.1",
-        input=[{"role":"user","content":[
-            {"type":"input_text","text":"Transcribe ALL visible text exactly. Preserve line breaks. Include handwriting."},
-            {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
-            {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
-        ]}]
-    )
-
-    raw = ocr.output_text
-
-    if not raw:
-        return jsonify({"error": "OCR returned empty text"}), 500
-
-    # --- PARSE ---
-    parsed = client.responses.create(
-        model="gpt-4.1",
-        input=f"""
-Extract structured data from the postcard text.
-
-Return STRICT JSON only. No explanation.
-
-Format:
-{{
-"sender": "",
-"receiver": "",
-"location_sent_from": "",
-"date": ""
-}}
-
-TEXT:
-{raw}
-"""
-    )
-
-    parsed_text = parsed.output_text
-    data = safe_json(parsed_text)
-
-    data = {
-        "sender": clean_field(data.get("sender")),
-        "receiver": clean_field(data.get("receiver")),
-        "location_sent_from": clean_field(data.get("location_sent_from")),
-        "date": clean_field(data.get("date"))
-    }
-
-    # STORY
-    story = client.responses.create(
-        model="gpt-4.1-mini",
-        input=f"""
-Write clearly formatted sections:
-
-Context:
-Message Meaning:
-Historical Insight:
-Notable Details:
-
-TEXT:
-{raw}
-"""
-    ).output_text
-
-    # STAMP
-    stamp_resp = client.responses.create(
-        model="gpt-4.1",
-        input=[{
-            "role":"user",
-            "content":[
-                {"type":"input_text","text":"Analyze ONLY the postage stamp in the postcard image."},
+        # OCR
+        ocr = client.responses.create(
+            model="gpt-4.1",
+            input=[{"role":"user","content":[
+                {"type":"input_text","text":"Transcribe ALL visible text exactly. Preserve line breaks. Include handwriting."},
                 {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
                 {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
-            ]
-        }]
-    )
+            ]}]
+        )
 
-    stamp = stamp_resp.output_text.strip()
-    if not stamp or len(stamp) < 5:
-        stamp = "Unable to interpret"
+        raw = ocr.output_text
 
-    # GEO
-    loc = data.get("location_sent_from")
-    lat, lon = geocode(loc)
+        if not raw:
+            return jsonify({"error": "OCR returned empty text"}), 500
 
-    # SAVE
-    save_postcard({
-        "hash": image_hash(f + b),
-        "location": loc,
-        "lat": lat,
-        "lon": lon,
-        "front": f64,
-        "back": b64,
-        "data": data,
-        "story": story,
-        "stamp": stamp
-    })
+        # --- PARSE ---
+        parsed = client.responses.create(
+            model="gpt-4.1",
+            input=f"""
+    Extract structured data from the postcard text.
 
-    return jsonify({
-        "data": data,
-        "story": story,
-        "stamp": stamp,
-        "front": f64,
-        "back": b64,
-        "lat": lat,
-        "lon": lon
-    })
+    Return STRICT JSON only. No explanation.
+
+    Format:
+    {{
+    "sender": "",
+    "receiver": "",
+    "location_sent_from": "",
+    "date": ""
+    }}
+
+    TEXT:
+    {raw}
+    """
+        )
+
+        parsed_text = parsed.output_text
+        data = safe_json(parsed_text)
+
+        data = {
+            "sender": clean_field(data.get("sender")),
+            "receiver": clean_field(data.get("receiver")),
+            "location_sent_from": clean_field(data.get("location_sent_from")),
+            "date": clean_field(data.get("date"))
+        }
+
+        # STORY
+        story = client.responses.create(
+            model="gpt-4.1-mini",
+            input=f"""
+    Write clearly formatted sections:
+
+    Context:
+    Message Meaning:
+    Historical Insight:
+    Notable Details:
+
+    TEXT:
+    {raw}
+    """
+        ).output_text
+
+        # STAMP
+        stamp_resp = client.responses.create(
+            model="gpt-4.1",
+            input=[{
+                "role":"user",
+                "content":[
+                    {"type":"input_text","text":"Analyze ONLY the postage stamp in the postcard image."},
+                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
+                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
+                ]
+            }]
+        )
+
+        stamp = stamp_resp.output_text.strip()
+        if not stamp or len(stamp) < 5:
+            stamp = "Unable to interpret"
+
+        # GEO
+        loc = data.get("location_sent_from")
+        lat, lon = geocode(loc)
+
+        # SAVE
+        save_postcard({
+            "hash": image_hash(f + b),
+            "location": loc,
+            "lat": lat,
+            "lon": lon,
+            "front": f64,
+            "back": b64,
+            "data": data,
+            "story": story,
+            "stamp": stamp
+        })
+
+        return jsonify({
+            "data": data,
+            "story": story,
+            "stamp": stamp,
+            "front": f64,
+            "back": b64,
+            "lat": lat,
+            "lon": lon
+        })
+    except Exception as e:
+        print("🔥 ANALYZE ERROR:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
