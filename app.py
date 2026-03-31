@@ -62,94 +62,43 @@ HTML = """
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
 <style>
-body{
-    margin:0;
-    font-family:Georgia;
-    background:#f5ecd9;
-}
-
-.wrapper{
-    display:flex;
-    height:100vh;
-}
+body{margin:0;font-family:Georgia;background:#f5ecd9;}
+.wrapper{display:flex;height:100vh;}
 
 .left{
-    width:32%;
+    width:28%;
     padding:30px;
     background:#efe3c2;
     border-right:2px solid #d6c7a1;
 }
 
 .right{
-    width:68%;
+    width:72%;
     padding:30px;
     overflow-y:auto;
 }
 
-.logo{
-    width:100%;
-    margin-bottom:20px;
-}
+.logo{width:100%;margin-bottom:20px;}
+.tagline{font-size:14px;color:#5a4d36;}
 
-.tagline{
-    font-size:14px;
-    margin-bottom:25px;
-    color:#5a4d36;
-}
-
-/* 🔥 FIXED UPLOAD LAYOUT */
-.upload-container{
+/* 🔥 TOP UPLOAD BAR */
+.upload-bar{
     display:flex;
-    flex-direction:column;
-    gap:20px;
-}
-
-.drop-zone{
-    border:2px dashed #cbb88a;
-    border-radius:10px;
-    padding:30px 20px;
-    text-align:center;
+    gap:15px;
     background:#fffaf0;
-    cursor:pointer;
-    transition:0.2s;
+    padding:15px;
+    border-radius:10px;
+    border:1px solid #d6c7a1;
+    margin-bottom:20px;
+    align-items:center;
 }
 
-.drop-zone:hover{
-    background:#f7efd9;
-    border-color:#8b6f47;
-}
-
-.drop-zone.dragover{
-    background:#f7efd9;
-    border-color:#8b6f47;
-}
-
-.drop-title{
-    font-weight:bold;
-    margin-bottom:8px;
-}
-
-.drop-sub{
-    font-size:13px;
-    color:#7a6a4f;
-}
-
-.preview{
-    margin-top:12px;
-}
-
-.preview img{
-    width:100%;
-    border-radius:6px;
-}
-
-input[type=file]{
-    display:none;
+.upload-input{
+    flex:1;
 }
 
 button{
-    width:100%;
-    padding:12px;
+    padding:10px 18px;
     background:#8b6f47;
     color:white;
     border:none;
@@ -157,97 +106,25 @@ button{
 }
 
 /* OUTPUT */
-.output-images{
-    display:flex;
-    gap:15px;
-    margin-bottom:20px;
-}
+.output-images{display:flex;gap:15px;margin-bottom:20px;}
+.output-images img{width:48%;border-radius:6px;}
 
-.output-images img{
-    width:48%;
-    border-radius:6px;
-}
-
-.tabs{
-    display:flex;
-    gap:10px;
-    margin-bottom:15px;
-}
-
-.tab{
-    padding:8px 14px;
-    background:#d6c7a1;
-    cursor:pointer;
-    border-radius:6px;
-}
-
-.tab.active{
-    background:#8b6f47;
-    color:white;
-}
+.tabs{display:flex;gap:10px;margin-bottom:15px;}
+.tab{padding:8px 14px;background:#d6c7a1;cursor:pointer;border-radius:6px;}
+.tab.active{background:#8b6f47;color:white;}
 
 .tab-content{display:none;}
 .tab-content.active{display:block;}
 
-.card{
-    background:#fffaf0;
-    padding:20px;
-    border-radius:8px;
-}
+.card{background:#fffaf0;padding:20px;border-radius:8px;}
+.section{margin-bottom:12px;}
 
-#map{
-    height:400px;
-    border-radius:8px;
-}
+#map{height:400px;border-radius:8px;}
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-function setupDrop(zoneId, inputId, previewId){
-    const zone = document.getElementById(zoneId);
-    const input = document.getElementById(inputId);
-
-    zone.onclick = () => input.click();
-
-    zone.addEventListener("dragover", e=>{
-        e.preventDefault();
-        zone.classList.add("dragover");
-    });
-
-    zone.addEventListener("dragleave", ()=>{
-        zone.classList.remove("dragover");
-    });
-
-    zone.addEventListener("drop", e=>{
-        e.preventDefault();
-        zone.classList.remove("dragover");
-        input.files = e.dataTransfer.files;
-        showPreview(input, previewId);
-    });
-
-    input.addEventListener("change", ()=>{
-        showPreview(input, previewId);
-    });
-}
-
-function showPreview(input, previewId){
-    const file = input.files[0];
-    if(!file) return;
-
-    const reader = new FileReader();
-    reader.onload = e=>{
-        document.getElementById(previewId).innerHTML =
-            "<img src='"+e.target.result+"'>";
-    };
-    reader.readAsDataURL(file);
-}
-
-window.onload = ()=>{
-    setupDrop("frontZone","frontInput","frontPreview");
-    setupDrop("backZone","backInput","backPreview");
-};
-
 function showTab(id){
  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
@@ -258,6 +135,7 @@ function showTab(id){
 
 function initMap(){
  if(window.mapLoaded)return;
+
  var map=L.map('map').setView([20,0],2);
  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -278,39 +156,26 @@ function initMap(){
 
 <div class="wrapper">
 
+<!-- LEFT CLEAN PANEL -->
 <div class="left">
-
 <img src="/static/logo.png" class="logo">
-<div class="tagline">Preserving history through postcards.</div>
+<div class="tagline">
+Preserving history through postcards — uncovering forgotten stories.
+</div>
+</div>
+
+<!-- RIGHT CONTENT -->
+<div class="right">
 
 <form method="POST" enctype="multipart/form-data">
 
-<div class="upload-container">
-
-<div id="frontZone" class="drop-zone">
-<div class="drop-title">Front Image</div>
-<div class="drop-sub">Click or drag image here</div>
-<input id="frontInput" type="file" name="front" required>
-<div id="frontPreview" class="preview"></div>
-</div>
-
-<div id="backZone" class="drop-zone">
-<div class="drop-title">Back Image</div>
-<div class="drop-sub">Click or drag image here</div>
-<input id="backInput" type="file" name="back" required>
-<div id="backPreview" class="preview"></div>
-</div>
-
-</div>
-
-<br>
+<div class="upload-bar">
+<input class="upload-input" type="file" name="front" required>
+<input class="upload-input" type="file" name="back" required>
 <button>Analyze</button>
+</div>
 
 </form>
-
-</div>
-
-<div class="right">
 
 {% if raw %}
 
@@ -326,19 +191,33 @@ function initMap(){
 <div id="map-tab" class="tab" onclick="showTab('map')">Map</div>
 </div>
 
+<!-- OVERVIEW -->
 <div id="overview" class="tab-content active card">
+<div class="section"><b>Sender:</b> {{data.sender}}</div>
+<div class="section"><b>Receiver:</b> {{data.receiver}}</div>
+<div class="section"><b>From:</b> {{data.location_sent_from}}</div>
+<div class="section"><b>Date:</b> {{data.date}}</div>
 <p>{{data.full_transcription}}</p>
 </div>
 
+<!-- STAMP -->
 <div id="stamp" class="tab-content card">
+<p><b>Country:</b> {{stamp.country}}</p>
+<p><b>Denomination:</b> {{stamp.denomination}}</p>
+<p><b>Era:</b> {{stamp.year_or_era}}</p>
 <p>{{stamp.description}}</p>
 <img src="data:image/png;base64,{{stamp_img}}" width="160">
 </div>
 
+<!-- STORY -->
 <div id="story" class="tab-content card">
-<p>{{story.meaning}}</p>
+<p><b>People:</b><br>{{story.people}}</p>
+<p><b>Context:</b><br>{{story.context}}</p>
+<p><b>Meaning:</b><br>{{story.meaning}}</p>
+<p><b>Confidence:</b> {{story.confidence}}</p>
 </div>
 
+<!-- MAP -->
 <div id="map" class="tab-content card">
 <div id="map"></div>
 </div>
@@ -365,10 +244,12 @@ def index():
         f64=encode_bytes(f)
         b64=encode_bytes(b)
 
+        # 🔥 STRONG EXTRACTION
         v=client.responses.create(
             model="gpt-4.1-mini",
             input=[{"role":"user","content":[
-                {"type":"input_text","text":"Return JSON: location_sent_from,full_transcription"},
+                {"type":"input_text","text":
+                "Return STRICT JSON with sender,receiver,location_sent_from,date,full_transcription"},
                 {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
                 {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
             ]}]
@@ -380,11 +261,29 @@ def index():
         loc=data.get("location_sent_from")
         lat,lon=geocode(loc)
 
-        s=client.responses.create(model="gpt-4.1-mini",input="Describe stamp")
-        stamp={"description":s.output[0].content[0].text}
+        # 🔥 STAMP FIX
+        s=client.responses.create(
+            model="gpt-4.1-mini",
+            input=[{"role":"user","content":[
+                {"type":"input_text","text":
+                "Analyze ONLY the postage stamp. Return JSON: country,denomination,year_or_era,description"},
+                {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
+            ]}]
+        )
+        stamp=safe_json(s.output[0].content[0].text)
 
-        st=client.responses.create(model="gpt-4.1-mini",input=f"Explain: {raw}")
-        story={"meaning":st.output[0].content[0].text}
+        # 🔥 STORY FIX
+        st=client.responses.create(
+            model="gpt-4.1-mini",
+            input=f"""
+Return JSON:
+people,context,meaning,confidence
+
+Postcard:
+{raw}
+"""
+        )
+        story=safe_json(st.output[0].content[0].text)
 
         save_postcard({"location":loc,"lat":lat,"lon":lon,"front":f64})
 
