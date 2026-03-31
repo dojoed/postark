@@ -48,7 +48,7 @@ def geocode_location(location):
         pass
     return None, None
 
-# --- HTML ---
+# --- HTML TEMPLATE ---
 HTML = """
 <!DOCTYPE html>
 <html>
@@ -64,11 +64,7 @@ body { margin:0; font-family: Georgia; background:#f5ecd9; }
 .left { width:32%; padding:30px; background:#efe3c2; border-right:2px solid #d6c7a1; }
 .right { width:68%; padding:30px; overflow-y:auto; }
 
-/* LOGO FIX */
-.logo {
-    width:220px;
-    margin-bottom:10px;
-}
+.logo { width:220px; margin-bottom:10px; }
 
 .tagline {
     font-size:15px;
@@ -76,14 +72,38 @@ body { margin:0; font-family: Georgia; background:#f5ecd9; }
     line-height:1.4;
 }
 
-/* UPLOAD */
+/* MODERN UPLOAD */
 .upload-box {
     background:#fdf6e3;
-    border:2px dashed #cbb88a;
+    border-radius:10px;
     padding:20px;
-    border-radius:8px;
 }
 
+.upload-title {
+    font-weight:bold;
+    margin-bottom:12px;
+}
+
+.drop-zone {
+    border:2px dashed #cbb88a;
+    padding:18px;
+    border-radius:8px;
+    background:#fffaf0;
+    transition:0.2s;
+}
+
+.drop-zone:hover {
+    border-color:#8b6f47;
+    background:#f7efd9;
+}
+
+input[type="file"] {
+    display:block;
+    margin-top:8px;
+    margin-bottom:15px;
+}
+
+/* BUTTON */
 button {
     width:100%;
     padding:12px;
@@ -92,25 +112,53 @@ button {
     border:none;
     border-radius:6px;
     margin-top:15px;
+    font-size:15px;
 }
 
 /* OUTPUT */
-.output-images { display:flex; gap:15px; margin-bottom:20px; }
-.output-images img { width:48%; border-radius:6px; }
+.output-images {
+    display:flex;
+    gap:15px;
+    margin-bottom:20px;
+}
+
+.output-images img {
+    width:48%;
+    border-radius:6px;
+}
 
 /* TABS */
 .tabs { display:flex; gap:10px; margin-bottom:15px; }
-.tab { padding:8px 14px; background:#d6c7a1; cursor:pointer; border-radius:6px; }
-.tab.active { background:#8b6f47; color:white; }
+
+.tab {
+    padding:8px 14px;
+    background:#d6c7a1;
+    cursor:pointer;
+    border-radius:6px;
+}
+
+.tab.active {
+    background:#8b6f47;
+    color:white;
+}
 
 .tab-content { display:none; }
 .tab-content.active { display:block; }
 
-.card { background:#fffaf0; padding:20px; border-radius:8px; }
+.card {
+    background:#fffaf0;
+    padding:20px;
+    border-radius:8px;
+}
 
+/* STORY */
 .story-section { margin-bottom:15px; }
 
-#map { height:400px; border-radius:8px; }
+/* MAP */
+#map {
+    height:400px;
+    border-radius:8px;
+}
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -130,11 +178,15 @@ function initMap() {
     if (!window.mapInitialized) {
         var lat = {{ lat if lat else 0 }};
         var lon = {{ lon if lon else 0 }};
+
         var map = L.map('map').setView([lat, lon], 5);
+
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         {% if lat and lon %}
-        L.marker([lat, lon]).addTo(map).bindPopup("{{ location }}").openPopup();
+        L.marker([lat, lon]).addTo(map)
+            .bindPopup("{{ location }}")
+            .openPopup();
         {% endif %}
 
         window.mapInitialized = true;
@@ -147,23 +199,38 @@ function initMap() {
 
 <div class="wrapper">
 
+<!-- LEFT -->
 <div class="left">
+
 <img src="/static/logo.png" class="logo">
+
 <div class="tagline">
 Preserving history through postcards — uncovering people, places, and forgotten stories.
 </div>
 
 <form method="POST" enctype="multipart/form-data">
+
 <div class="upload-box">
-<label>Front</label><br>
-<input type="file" name="front" required><br><br>
-<label>Back</label><br>
+
+<div class="upload-title">Upload Postcard</div>
+
+<div class="drop-zone">
+<label>Front Image</label>
+<input type="file" name="front" required>
+
+<label>Back Image</label>
 <input type="file" name="back" required>
 </div>
-<button type="submit">Analyze</button>
-</form>
+
 </div>
 
+<button type="submit">🔍 Analyze Postcard</button>
+
+</form>
+
+</div>
+
+<!-- RIGHT -->
 <div class="right">
 
 {% if raw_data %}
@@ -195,6 +262,7 @@ Preserving history through postcards — uncovering people, places, and forgotte
 <p><b>Denomination:</b> {{ stamp.denomination }}</p>
 <p><b>Era:</b> {{ stamp.year_or_era }}</p>
 <p><b>Description:</b> {{ stamp.description }}</p>
+<p><b>Confidence:</b> {{ stamp.confidence }}</p>
 {% else %}
 <pre>{{ stamp_raw }}</pre>
 {% endif %}
@@ -264,11 +332,19 @@ def index():
         location = data.get("location_sent_from") if data else None
         lat, lon = geocode_location(location) if location else (None, None)
 
-        # --- STAMP ---
+        # --- STAMP (FIXED) ---
         stamp_resp = client.responses.create(
             model="gpt-4.1-mini",
-            input=f"Return JSON: country, denomination, year_or_era, description for stamp: {raw_data}"
+            input=[{
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Analyze ONLY the stamp and return JSON: country, denomination, year_or_era, description, confidence"},
+                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{front_b64}"},
+                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{back_b64}"}
+                ]
+            }]
         )
+
         stamp_raw = stamp_resp.output[0].content[0].text
         stamp = safe_json_parse(stamp_raw)
 
@@ -282,6 +358,7 @@ people, context, meaning, confidence
 Postcard: {raw_data}
 """
         )
+
         story = safe_json_parse(story_resp.output[0].content[0].text)
 
         # --- IMAGE ---
