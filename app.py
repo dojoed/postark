@@ -56,13 +56,12 @@ body {
     color: #2c2c2c;
 }
 
-/* Layout */
 .wrapper {
     display: flex;
     height: 100vh;
 }
 
-/* LEFT PANEL */
+/* LEFT */
 .left {
     width: 35%;
     padding: 30px;
@@ -70,17 +69,33 @@ body {
     border-right: 2px solid #d6c7a1;
 }
 
-/* RIGHT PANEL */
+/* RIGHT */
 .right {
     width: 65%;
     padding: 30px;
     overflow-y: auto;
 }
 
-/* Logo */
-.logo {
-    font-size: 26px;
+/* HEADER */
+.header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.logo-img {
+    width: 50px;
+}
+
+.title {
+    font-size: 24px;
     font-weight: bold;
+}
+
+.tagline {
+    font-size: 13px;
+    color: #6b5e45;
     margin-bottom: 20px;
 }
 
@@ -93,10 +108,21 @@ body {
     border-radius: 6px;
 }
 
-/* Inputs */
-input, button {
-    margin-top: 10px;
-    margin-bottom: 15px;
+/* Layout */
+.row {
+    display: flex;
+    gap: 20px;
+}
+
+.left-col { flex: 1; }
+.right-col { flex: 2; }
+
+/* Story */
+.story {
+    background: #fdf6e3;
+    padding: 16px;
+    border-left: 4px solid #8b6f47;
+    line-height: 1.6;
 }
 
 button {
@@ -107,28 +133,6 @@ button {
     border-radius: 4px;
     cursor: pointer;
 }
-
-/* Stamp Layout */
-.row {
-    display: flex;
-    gap: 20px;
-}
-
-.left-col {
-    flex: 1;
-}
-
-.right-col {
-    flex: 2;
-}
-
-/* Story */
-.story {
-    background: #fdf6e3;
-    padding: 16px;
-    border-left: 4px solid #8b6f47;
-    line-height: 1.6;
-}
 </style>
 
 </head>
@@ -136,11 +140,16 @@ button {
 
 <div class="wrapper">
 
-<!-- LEFT SIDE -->
+<!-- LEFT -->
 <div class="left">
 
-<div class="logo">
-📬 Postcard Archaeology
+<div class="header">
+    <img src="/static/logo.png" class="logo-img">
+    <div class="title">Postcard Archaeology</div>
+</div>
+
+<div class="tagline">
+Preserving history through postcards — uncovering stories, people, and places across time.
 </div>
 
 <form method="POST" enctype="multipart/form-data">
@@ -155,21 +164,21 @@ button {
 
 {% if front_image %}
 <div class="card">
-    <h3>Front</h3>
-    <img src="data:image/jpeg;base64,{{ front_image }}" width="100%">
+<h3>Front</h3>
+<img src="data:image/jpeg;base64,{{ front_image }}" width="100%">
 </div>
 {% endif %}
 
 {% if back_image %}
 <div class="card">
-    <h3>Back</h3>
-    <img src="data:image/jpeg;base64,{{ back_image }}" width="100%">
+<h3>Back</h3>
+<img src="data:image/jpeg;base64,{{ back_image }}" width="100%">
 </div>
 {% endif %}
 
 </div>
 
-<!-- RIGHT SIDE -->
+<!-- RIGHT -->
 <div class="right">
 
 {% if data %}
