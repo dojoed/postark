@@ -44,9 +44,11 @@ def safe_json(t):
 
 def geocode(loc):
     try:
-        r=requests.get("https://nominatim.openstreetmap.org/search",
-        params={"q":loc,"format":"json"},
-        headers={"User-Agent":"app"}).json()
+        r=requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q":loc,"format":"json"},
+            headers={"User-Agent":"app"}
+        ).json()
         if r: return float(r[0]["lat"]),float(r[0]["lon"])
     except: pass
     return None,None
@@ -60,44 +62,84 @@ HTML = """
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
 <style>
-body{margin:0;font-family:Georgia;background:#f5ecd9;}
-.wrapper{display:flex;height:100vh;}
-
-.left{width:32%;padding:30px;background:#efe3c2;border-right:2px solid #d6c7a1;}
-.right{width:68%;padding:30px;overflow-y:auto;}
-
-.logo{width:100%;margin-bottom:15px;}
-.tagline{font-size:14px;margin-bottom:25px;color:#5a4d36;}
-
-/* CLEAN UPLOAD */
-.upload-card{
-    background:#fffaf0;
-    border:1px solid #d6c7a1;
-    border-radius:10px;
-    padding:20px;
+body{
+    margin:0;
+    font-family:Georgia;
+    background:#f5ecd9;
 }
 
-.upload-field{
-    margin-bottom:15px;
+.wrapper{
+    display:flex;
+    height:100vh;
 }
 
-.drop-area{
+.left{
+    width:32%;
+    padding:30px;
+    background:#efe3c2;
+    border-right:2px solid #d6c7a1;
+}
+
+.right{
+    width:68%;
+    padding:30px;
+    overflow-y:auto;
+}
+
+.logo{
+    width:100%;
+    margin-bottom:20px;
+}
+
+.tagline{
+    font-size:14px;
+    margin-bottom:25px;
+    color:#5a4d36;
+}
+
+/* 🔥 FIXED UPLOAD LAYOUT */
+.upload-container{
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+}
+
+.drop-zone{
     border:2px dashed #cbb88a;
-    border-radius:8px;
-    padding:20px;
+    border-radius:10px;
+    padding:30px 20px;
     text-align:center;
+    background:#fffaf0;
     cursor:pointer;
-    transition:.2s;
+    transition:0.2s;
 }
 
-.drop-area.dragover{
-    border-color:#8b6f47;
+.drop-zone:hover{
     background:#f7efd9;
+    border-color:#8b6f47;
+}
+
+.drop-zone.dragover{
+    background:#f7efd9;
+    border-color:#8b6f47;
+}
+
+.drop-title{
+    font-weight:bold;
+    margin-bottom:8px;
+}
+
+.drop-sub{
+    font-size:13px;
+    color:#7a6a4f;
+}
+
+.preview{
+    margin-top:12px;
 }
 
 .preview img{
     width:100%;
-    margin-top:10px;
     border-radius:6px;
 }
 
@@ -112,71 +154,100 @@ button{
     color:white;
     border:none;
     border-radius:6px;
-    margin-top:10px;
 }
 
 /* OUTPUT */
-.output-images{display:flex;gap:15px;margin-bottom:20px;}
-.output-images img{width:48%;border-radius:6px;}
+.output-images{
+    display:flex;
+    gap:15px;
+    margin-bottom:20px;
+}
 
-.tabs{display:flex;gap:10px;margin-bottom:15px;}
-.tab{padding:8px 14px;background:#d6c7a1;cursor:pointer;border-radius:6px;}
-.tab.active{background:#8b6f47;color:white;}
+.output-images img{
+    width:48%;
+    border-radius:6px;
+}
+
+.tabs{
+    display:flex;
+    gap:10px;
+    margin-bottom:15px;
+}
+
+.tab{
+    padding:8px 14px;
+    background:#d6c7a1;
+    cursor:pointer;
+    border-radius:6px;
+}
+
+.tab.active{
+    background:#8b6f47;
+    color:white;
+}
 
 .tab-content{display:none;}
 .tab-content.active{display:block;}
 
-.card{background:#fffaf0;padding:20px;border-radius:8px;}
-#map{height:400px;border-radius:8px;}
+.card{
+    background:#fffaf0;
+    padding:20px;
+    border-radius:8px;
+}
+
+#map{
+    height:400px;
+    border-radius:8px;
+}
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-// DRAG DROP FIXED
-function setupDrop(id, inputId, previewId){
-    const box = document.getElementById(id);
+function setupDrop(zoneId, inputId, previewId){
+    const zone = document.getElementById(zoneId);
     const input = document.getElementById(inputId);
 
-    box.onclick = () => input.click();
+    zone.onclick = () => input.click();
 
-    box.addEventListener("dragover", e=>{
+    zone.addEventListener("dragover", e=>{
         e.preventDefault();
-        box.classList.add("dragover");
+        zone.classList.add("dragover");
     });
 
-    box.addEventListener("dragleave", ()=>box.classList.remove("dragover"));
+    zone.addEventListener("dragleave", ()=>{
+        zone.classList.remove("dragover");
+    });
 
-    box.addEventListener("drop", e=>{
+    zone.addEventListener("drop", e=>{
         e.preventDefault();
-        box.classList.remove("dragover");
+        zone.classList.remove("dragover");
         input.files = e.dataTransfer.files;
-        preview(input, previewId);
+        showPreview(input, previewId);
     });
 
-    input.onchange = ()=>preview(input, previewId);
+    input.addEventListener("change", ()=>{
+        showPreview(input, previewId);
+    });
 }
 
-function preview(input, id){
+function showPreview(input, previewId){
     const file = input.files[0];
     if(!file) return;
 
     const reader = new FileReader();
     reader.onload = e=>{
-        document.getElementById(id).innerHTML =
+        document.getElementById(previewId).innerHTML =
             "<img src='"+e.target.result+"'>";
     };
     reader.readAsDataURL(file);
 }
 
-function init(){
-    setupDrop("frontBox","frontInput","frontPreview");
-    setupDrop("backBox","backInput","backPreview");
-}
+window.onload = ()=>{
+    setupDrop("frontZone","frontInput","frontPreview");
+    setupDrop("backZone","backInput","backPreview");
+};
 
-window.onload = init;
-
-// TABS + MAP
 function showTab(id){
  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
@@ -208,33 +279,35 @@ function initMap(){
 <div class="wrapper">
 
 <div class="left">
+
 <img src="/static/logo.png" class="logo">
 <div class="tagline">Preserving history through postcards.</div>
 
 <form method="POST" enctype="multipart/form-data">
 
-<div class="upload-card">
+<div class="upload-container">
 
-<div class="upload-field">
-<div id="frontBox" class="drop-area">
-Front Image (click or drag)
-</div>
+<div id="frontZone" class="drop-zone">
+<div class="drop-title">Front Image</div>
+<div class="drop-sub">Click or drag image here</div>
 <input id="frontInput" type="file" name="front" required>
 <div id="frontPreview" class="preview"></div>
 </div>
 
-<div class="upload-field">
-<div id="backBox" class="drop-area">
-Back Image (click or drag)
-</div>
+<div id="backZone" class="drop-zone">
+<div class="drop-title">Back Image</div>
+<div class="drop-sub">Click or drag image here</div>
 <input id="backInput" type="file" name="back" required>
 <div id="backPreview" class="preview"></div>
 </div>
 
 </div>
 
+<br>
 <button>Analyze</button>
+
 </form>
+
 </div>
 
 <div class="right">
