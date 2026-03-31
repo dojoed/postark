@@ -69,41 +69,42 @@ body{margin:0;font-family:Georgia;background:#f5ecd9;}
 .logo{width:100%;margin-bottom:15px;}
 .tagline{font-size:14px;margin-bottom:25px;color:#5a4d36;}
 
-/* 🔥 MODERN UPLOAD */
-.upload-zone{
-    border:2px dashed #cbb88a;
-    border-radius:12px;
-    padding:25px;
-    text-align:center;
+/* CLEAN UPLOAD */
+.upload-card{
     background:#fffaf0;
-    cursor:pointer;
-    transition:0.2s;
+    border:1px solid #d6c7a1;
+    border-radius:10px;
+    padding:20px;
+}
+
+.upload-field{
     margin-bottom:15px;
 }
-.upload-zone:hover{
-    background:#f7efd9;
+
+.drop-area{
+    border:2px dashed #cbb88a;
+    border-radius:8px;
+    padding:20px;
+    text-align:center;
+    cursor:pointer;
+    transition:.2s;
+}
+
+.drop-area.dragover{
     border-color:#8b6f47;
-}
-
-.upload-zone input{
-    display:none;
-}
-
-.upload-text{
-    font-size:14px;
-    color:#6b5e45;
-}
-
-.preview{
-    margin-top:10px;
+    background:#f7efd9;
 }
 
 .preview img{
     width:100%;
+    margin-top:10px;
     border-radius:6px;
 }
 
-/* BUTTON */
+input[type=file]{
+    display:none;
+}
+
 button{
     width:100%;
     padding:12px;
@@ -132,18 +133,50 @@ button{
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-function previewFile(input, id){
-    const file = input.files[0];
-    if(file){
-        const reader = new FileReader();
-        reader.onload = function(e){
-            document.getElementById(id).innerHTML =
-                "<img src='"+e.target.result+"'>";
-        };
-        reader.readAsDataURL(file);
-    }
+// DRAG DROP FIXED
+function setupDrop(id, inputId, previewId){
+    const box = document.getElementById(id);
+    const input = document.getElementById(inputId);
+
+    box.onclick = () => input.click();
+
+    box.addEventListener("dragover", e=>{
+        e.preventDefault();
+        box.classList.add("dragover");
+    });
+
+    box.addEventListener("dragleave", ()=>box.classList.remove("dragover"));
+
+    box.addEventListener("drop", e=>{
+        e.preventDefault();
+        box.classList.remove("dragover");
+        input.files = e.dataTransfer.files;
+        preview(input, previewId);
+    });
+
+    input.onchange = ()=>preview(input, previewId);
 }
 
+function preview(input, id){
+    const file = input.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+    reader.onload = e=>{
+        document.getElementById(id).innerHTML =
+            "<img src='"+e.target.result+"'>";
+    };
+    reader.readAsDataURL(file);
+}
+
+function init(){
+    setupDrop("frontBox","frontInput","frontPreview");
+    setupDrop("backBox","backInput","backPreview");
+}
+
+window.onload = init;
+
+// TABS + MAP
 function showTab(id){
  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
@@ -180,17 +213,25 @@ function initMap(){
 
 <form method="POST" enctype="multipart/form-data">
 
-<label class="upload-zone">
-<div class="upload-text">Click or drag front image</div>
-<input type="file" name="front" onchange="previewFile(this,'p1')" required>
-<div id="p1" class="preview"></div>
-</label>
+<div class="upload-card">
 
-<label class="upload-zone">
-<div class="upload-text">Click or drag back image</div>
-<input type="file" name="back" onchange="previewFile(this,'p2')" required>
-<div id="p2" class="preview"></div>
-</label>
+<div class="upload-field">
+<div id="frontBox" class="drop-area">
+Front Image (click or drag)
+</div>
+<input id="frontInput" type="file" name="front" required>
+<div id="frontPreview" class="preview"></div>
+</div>
+
+<div class="upload-field">
+<div id="backBox" class="drop-area">
+Back Image (click or drag)
+</div>
+<input id="backInput" type="file" name="back" required>
+<div id="backPreview" class="preview"></div>
+</div>
+
+</div>
 
 <button>Analyze</button>
 </form>
@@ -266,18 +307,10 @@ def index():
         loc=data.get("location_sent_from")
         lat,lon=geocode(loc)
 
-        s=client.responses.create(
-            model="gpt-4.1-mini",
-            input="Describe the stamp"
-        )
-
+        s=client.responses.create(model="gpt-4.1-mini",input="Describe stamp")
         stamp={"description":s.output[0].content[0].text}
 
-        st=client.responses.create(
-            model="gpt-4.1-mini",
-            input=f"Explain this postcard: {raw}"
-        )
-
+        st=client.responses.create(model="gpt-4.1-mini",input=f"Explain: {raw}")
         story={"meaning":st.output[0].content[0].text}
 
         save_postcard({"location":loc,"lat":lat,"lon":lon,"front":f64})
