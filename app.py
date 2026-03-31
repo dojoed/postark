@@ -1,8 +1,7 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, jsonify, render_template_string
 from openai import OpenAI
-import os, base64, json, io, requests
+import os, base64, json, requests
 from dotenv import load_dotenv
-from PIL import Image
 
 # --- SETUP ---
 load_dotenv()
@@ -26,22 +25,14 @@ def save_postcard(entry):
 # --- HELPERS ---
 def encode_bytes(b): return base64.b64encode(b).decode()
 
-def crop_stamp(b):
-    img = Image.open(io.BytesIO(b))
-    w,h = img.size
-    return img.crop((int(w*0.65),0,w,int(h*0.35)))
-
-def image_to_base64(img):
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode()
-
 def safe_json(t):
     try:
-        cleaned = t.replace("```json","").replace("```","").strip()
-        return json.loads(cleaned)
+        return json.loads(t.replace("```json","").replace("```","").strip())
     except:
         return {}
+
+def clean_field(val):
+    return val if val else "Unable to interpret"
 
 def geocode(loc):
     try:
@@ -52,10 +43,11 @@ def geocode(loc):
         ).json()
         if r:
             return float(r[0]["lat"]),float(r[0]["lon"])
-    except: pass
+    except:
+        pass
     return None,None
 
-# --- HTML ---
+# --- HTML (UNCHANGED) ---
 HTML = """
 <!DOCTYPE html>
 <html>
@@ -66,225 +58,465 @@ HTML = """
 <style>
 body{margin:0;font-family:Georgia;background:#f5ecd9;}
 .wrapper{display:flex;height:100vh;}
+.left{width:26%;padding:30px;background:#efe3c2;}
+.right{width:74%;padding:30px;overflow-y:auto;}
 
-.left{width:28%;padding:30px;background:#efe3c2;border-right:2px solid #d6c7a1;}
-.right{width:72%;padding:30px;overflow-y:auto;}
+.logo{width:100%;margin-bottom:10px;}
+.tagline{font-size:14px;color:#5a4d36;margin-bottom:20px;}
 
-.logo{width:100%;margin-bottom:20px;}
-.tagline{font-size:14px;color:#5a4d36;}
+.upload-bar{display:flex;gap:20px;margin-bottom:25px;}
 
-.upload-bar{display:flex;gap:15px;margin-bottom:20px;}
-.upload-card{flex:1;background:#fffaf0;border:1px solid #d6c7a1;border-radius:10px;padding:15px;}
-.upload-title{font-weight:bold;margin-bottom:8px;}
+.upload-card{
+ flex:1;background:#fffaf0;border:2px dashed #cbb892;border-radius:12px;
+ padding:20px;text-align:center;position:relative;cursor:pointer;
+}
 
-button{padding:10px 18px;background:#8b6f47;color:white;border:none;border-radius:6px;}
+.upload-title{font-weight:bold;margin-bottom:10px;}
+.upload-sub{font-size:12px;color:#7a6a4f;margin-bottom:10px;}
 
-.output-images{display:flex;gap:15px;margin-bottom:20px;}
-.output-images img{width:48%;border-radius:6px;}
+.upload-card input{
+ position:absolute;width:100%;height:100%;top:0;left:0;opacity:0;cursor:pointer;
+}
 
+.preview img{
+ width:100%;height:160px;object-fit:contain;background:#f5ecd9;
+ border-radius:6px;margin-top:10px;
+}
+
+.output{background:#fffaf0;padding:20px;border-radius:10px;margin-top:20px;}
+
+.output-images{display:flex;gap:10px;margin-bottom:15px;}
+.output-images img{
+ width:48%;height:220px;object-fit:contain;background:#f5ecd9;border-radius:6px;
+}
+
+button{
+ padding:10px 18px;background:#8b6f47;color:white;border:none;border-radius:6px;
+}
+
+.history-btn{
+ margin-top:10px;
+ padding:10px;
+ background:#e5d7b5;
+ border-radius:6px;
+ cursor:pointer;
+}
+
+.panel{
+ position:fixed;
+ top:0;
+ right:0;
+ width:60%;
+ height:100%;
+ background:#fff;
+ z-index:9999;
+ padding:20px;
+ overflow-y:auto;
+ display:none;
+ box-shadow:-5px 0 20px rgba(0,0,0,0.2);
+}
+
+.history-card{
+ display:flex;
+ gap:10px;
+ margin-bottom:10px;
+}
+
+.history-card img{
+ width:70px;
+ height:70px;
+ object-fit:cover;
+ border-radius:6px;
+}
+
+#uploadWrapper.collapsed{
+ display:none;
+}
+
+/* --- TABS --- */
 .tabs{display:flex;gap:10px;margin-bottom:15px;}
-.tab{padding:8px 14px;background:#d6c7a1;cursor:pointer;border-radius:6px;}
-.tab.active{background:#8b6f47;color:white;}
-
+.tab{padding:8px 12px;border-radius:6px;background:#e5d7b5;cursor:pointer;}
+.tab.active{background:#8b6f47;color:#fff;}
 .tab-content{display:none;}
 .tab-content.active{display:block;}
+#detailMap{height:300px;border-radius:10px;margin-top:10px;}
 
-.card{background:#fffaf0;padding:20px;border-radius:8px;}
-
-#map{height:400px;border-radius:8px;}
-
-/* 🔥 MODAL */
-.modal{
- display:none;
- position:fixed;
- top:0;left:0;width:100%;height:100%;
- background:rgba(0,0,0,0.6);
- justify-content:center;
- align-items:center;
+/* --- LOADER --- */
+.loader{
+ display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+ background:rgba(0,0,0,0.7);justify-content:center;align-items:center;
 }
 
-.modal-content{
- background:#fffaf0;
- padding:20px;
- border-radius:10px;
- width:500px;
- max-height:90vh;
- overflow:auto;
+.loader-box{
+ background:#fff;padding:30px;border-radius:12px;width:340px;
+ box-shadow:0 10px 30px rgba(0,0,0,0.2);
 }
 
-.modal img{width:100%;border-radius:6px;margin-bottom:10px;}
+.loader-title{font-weight:bold;margin-bottom:8px;}
+.loader-sub{font-size:13px;color:#6b5c3e;margin-bottom:15px;}
+
+.step{margin:6px 0;opacity:.4;font-size:13px;}
+.step.active{opacity:1;font-weight:bold;}
+.step.done::before{content:"✔ ";color:#8b6f47;}
+
+.progress{height:8px;background:#ddd;margin-top:15px;border-radius:6px;}
+.bar{height:100%;width:0;background:#8b6f47;border-radius:6px;}
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-let mapInstance;
+const steps=[
+ "Uploading images",
+ "Reading handwriting (OCR)",
+ "Extracting postcard data",
+ "Analyzing stamp",
+ "Building story",
+ "Finalizing"
+];
 
-function showTab(id){
- document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
- document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+let loaderInterval;
 
- document.getElementById(id).classList.add('active');
- document.getElementById(id+'-tab').classList.add('active');
+function startLoader(){
+ document.getElementById("loader").style.display="flex";
+ let s=document.getElementById("steps");
+ s.innerHTML="";
+ steps.forEach(x=>s.innerHTML+="<div class='step'>"+x+"</div>");
 
- if(id==="map"){ setTimeout(initMap,150); }
+ let i=0;
+ loaderInterval=setInterval(()=>{
+   let el=document.querySelectorAll(".step");
+   if(i<el.length){
+     if(i>0){el[i-1].classList.remove("active");el[i-1].classList.add("done");}
+     el[i].classList.add("active");
+     document.getElementById("bar").style.width=
+       Math.min(((i+1)/steps.length)*100,92)+"%";
+     i++;
+   }
+ },900);
 }
 
-function openDetail(p){
- document.getElementById("modal").style.display="flex";
+function stopLoader(){
+ clearInterval(loaderInterval);
+ document.getElementById("bar").style.width="100%";
+ setTimeout(()=>{document.getElementById("loader").style.display="none";},300);
+}
 
- document.getElementById("modalContent").innerHTML = `
-   <h3>${p.location || ""}</h3>
-   <img src="data:image/jpeg;base64,${p.front}">
-   <img src="data:image/jpeg;base64,${p.back}">
-   <p><b>Story:</b> ${p.story?.meaning || ""}</p>
-   <p><b>Stamp:</b> ${p.stamp?.description || ""}</p>
+
+function previewImage(input,id){
+ let file=input.files[0];
+ if(!file) return;
+ let r=new FileReader();
+ r.onload=e=>document.getElementById(id).innerHTML=
+   `<img src="${e.target.result}">`;
+ r.readAsDataURL(file);
+}
+
+function switchTab(tab){
+ document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+ document.querySelectorAll(".tab-content").forEach(c=>c.classList.remove("active"));
+ document.getElementById("tab-"+tab).classList.add("active");
+ document.getElementById("content-"+tab).classList.add("active");
+ if(tab==="map"){ setTimeout(initDetailMap,100); }
+}
+
+let detailMap;
+function initDetailMap(){
+ if(!window.currentLat || !window.currentLon) return;
+ if(detailMap){ detailMap.remove(); }
+
+ detailMap = L.map('detailMap').setView([window.currentLat, window.currentLon], 6);
+ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png')
+  .addTo(detailMap);
+ L.marker([window.currentLat, window.currentLon]).addTo(detailMap);
+}
+
+async function submitForm(){
+ startLoader();
+
+ let fd=new FormData(document.getElementById("uploadForm"));
+ let res=await fetch("/analyze",{method:"POST",body:fd});
+ let data=await res.json();
+
+ stopLoader();
+ refreshHistory();
+ document.getElementById("uploadWrapper").classList.add("collapsed");
+
+ window.currentLat=data.lat;
+ window.currentLon=data.lon;
+
+ document.querySelector(".output").innerHTML=`
+ <div class="output-images">
+   <img src="data:image/jpeg;base64,${data.front}">
+   <img src="data:image/jpeg;base64,${data.back}">
+ </div>
+
+ <div class="tabs">
+   <div class="tab active" id="tab-overview" onclick="switchTab('overview')">Overview</div>
+   <div class="tab" id="tab-story" onclick="switchTab('story')">Story</div>
+   <div class="tab" id="tab-stamp" onclick="switchTab('stamp')">Stamp</div>
+   <div class="tab" id="tab-map" onclick="switchTab('map')">Map</div>
+ </div>
+
+ <div id="content-overview" class="tab-content active">
+   <p><b>Sender:</b> ${data.data.sender}</p>
+   <p><b>Receiver:</b> ${data.data.receiver}</p>
+   <p><b>Location:</b> ${data.data.location_sent_from}</p>
+   <p><b>Date:</b> ${data.data.date}</p>
+ </div>
+
+ <div id="content-story" class="tab-content">
+   <div style="white-space: pre-line;">${data.story}</div>
+ </div>
+
+ <div id="content-stamp" class="tab-content">
+   <div style="white-space: pre-line;">${data.stamp}</div>
+ </div>
+
+ <div id="content-map" class="tab-content">
+   <div id="detailMap"></div>
+ </div>
  `;
 }
 
-function closeModal(){
- document.getElementById("modal").style.display="none";
+async function openHistory(){
+  document.getElementById("panel").style.display="block";
+
+  let res = await fetch("/history");
+  let data = await res.json();
+  console.log(data);
+
+  let html = "";
+
+  data.forEach(p => {
+    const sender = (p.data && p.data.sender) ? p.data.sender : "Unknown";
+    const receiver = (p.data && p.data.receiver) ? p.data.receiver : "Unknown";
+    const location = (p.data && p.data.location_sent_from) ? p.data.location_sent_from : "Unknown";
+    const date = (p.data && p.data.date) ? p.data.date : "Unknown";
+
+    html += '<div class="history-card">' +
+      '<img src="data:image/jpeg;base64,' + (p.front || '') + '">' +
+      '<div>' +
+      '<b>' + sender + '</b> → ' + receiver + '<br>' +
+      location + '<br>' +
+      date +
+      '</div></div>';
+  });
+
+  document.getElementById("panelContent").innerHTML = html;
 }
 
-function initMap(){
+async function refreshHistory(){
+  let res = await fetch("/history");
+  let data = await res.json();
 
- if(!mapInstance){
-    mapInstance = L.map('map').setView([20,0],2);
+  let html="";
+  data.forEach(p=>{
+    html += '<div class="history-card">' +
+      '<img src="data:image/jpeg;base64,' + p.front + '">' +
+      '<div>' +
+      '<b>' + p.data.sender + '</b> → ' + p.data.receiver + '<br>' +
+      p.data.location_sent_from + '<br>' +
+      p.data.date +
+      '</div></div>';
+  });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
-        .addTo(mapInstance);
-
-    const data = {{postcards|tojson}};
-
-    data.forEach(p=>{
-        if(p.lat && p.lon){
-            L.marker([p.lat,p.lon])
-                .addTo(mapInstance)
-                .on("click", ()=>openDetail(p));
-        }
-    });
- }
-
- setTimeout(()=>{ mapInstance.invalidateSize(); },200);
+  document.getElementById("panelContent").innerHTML=html;
 }
+
+function closePanel(){
+ document.getElementById("panel").style.display="none";
+}
+
 </script>
 
 </head>
 <body>
 
 <div class="wrapper">
-
 <div class="left">
 <img src="/static/logo.png" class="logo">
 <div class="tagline">Preserving history through postcards.</div>
+<div class="history-btn" onclick="openHistory()">View History</div>
 </div>
 
 <div class="right">
 
-<form method="POST" enctype="multipart/form-data">
+<div id="uploadWrapper">
+<form id="uploadForm">
+
 <div class="upload-bar">
+
 <div class="upload-card">
 <div class="upload-title">Front of Card</div>
-<input type="file" name="front" required>
+<div class="upload-sub">Click to upload</div>
+<input type="file" name="front" onchange="previewImage(this,'f')" required>
+<div id="f" class="preview"></div>
 </div>
+
 <div class="upload-card">
 <div class="upload-title">Back of Card</div>
-<input type="file" name="back" required>
+<div class="upload-sub">Click to upload</div>
+<input type="file" name="back" onchange="previewImage(this,'b')" required>
+<div id="b" class="preview"></div>
 </div>
-<button>Analyze</button>
+
 </div>
+
+<button type="button" onclick="submitForm()">Analyze</button>
 </form>
-
-{% if raw %}
-<div class="output-images">
-<img src="data:image/jpeg;base64,{{front}}">
-<img src="data:image/jpeg;base64,{{back}}">
-</div>
-{% endif %}
-
-<div id="map" class="card"></div>
-
-</div>
 </div>
 
-<div id="modal" class="modal" onclick="closeModal()">
-<div class="modal-content" id="modalContent"></div>
+<div class="output"></div>
+</div>
+
+<div id="loader" class="loader">
+<div class="loader-box">
+<div class="loader-title">Analyzing your postcard</div>
+<div class="loader-sub">Upload front & back images, then click Analyze</div>
+<div id="steps"></div>
+<div class="progress"><div id="bar" class="bar"></div></div>
+</div>
+</div>
+
+<div id="panel" class="panel">
+<button onclick="closePanel()">Close</button>
+<div id="panelContent"></div>
 </div>
 
 </body>
 </html>
 """
 
-# --- ROUTE ---
-@app.route("/", methods=["GET","POST"])
+# --- ROUTES ---
+@app.route("/")
 def index():
+    return render_template_string(HTML)
 
-    posts=load_postcards()
+@app.route("/history")
+def history():
+    return jsonify(load_postcards())
 
-    if request.method=="POST":
-        f=request.files["front"].read()
-        b=request.files["back"].read()
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    f=request.files["front"].read()
+    b=request.files["back"].read()
 
-        f64=encode_bytes(f)
-        b64=encode_bytes(b)
+    f64=encode_bytes(f)
+    b64=encode_bytes(b)
 
-        v=client.responses.create(
-            model="gpt-4.1-mini",
-            input=[{"role":"user","content":[
-                {"type":"input_text","text":
-                "Return STRICT JSON with sender,receiver,location_sent_from,date,full_transcription"},
-                {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
-                {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
-            ]}]
-        )
+    # OCR
+    ocr=client.responses.create(
+        model="gpt-4.1",
+        input=[{"role":"user","content":[
+            {"type":"input_text","text":"Transcribe ALL visible text exactly. Preserve line breaks. Include handwriting."},
+            {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
+            {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
+        ]}]
+    )
 
-        raw=v.output[0].content[0].text
-        data=safe_json(raw)
+    raw=ocr.output[0].content[0].text
 
-        loc=data.get("location_sent_from")
-        lat,lon=geocode(loc)
+    # --- PARSE (IMPROVED, SAFE) ---
+    parsed=client.responses.create(
+        model="gpt-4.1",
+        input=f"""
+    Extract structured data from the postcard text.
 
-        s=client.responses.create(
-            model="gpt-4.1-mini",
-            input=[{"role":"user","content":[
-                {"type":"input_text","text":
-                "Analyze ONLY the postage stamp. Return JSON: country,denomination,year_or_era,description"},
-                {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
-            ]}]
-        )
+    Return STRICT JSON only. No explanation.
 
-        stamp=safe_json(s.output[0].content[0].text)
+    Format:
+    {{
+    "sender": "",
+    "receiver": "",
+    "location_sent_from": "",
+    "date": ""
+    }}
 
-        st=client.responses.create(
-            model="gpt-4.1-mini",
-            input=f"""
-Return STRICT JSON:
-people,context,meaning,confidence
+    Rules:
+    - If missing, use "Unable to interpret"
+    - Do not guess
+    - Do not add extra fields
 
-Postcard:
+    TEXT:
+    {raw}
+    """
+    )
+
+    parsed_text = parsed.output[0].content[0].text
+    data = safe_json(parsed_text)
+
+    # HARD FALLBACK (prevents empty UI fields)
+    data={
+        "sender":clean_field(data.get("sender")),
+        "receiver":clean_field(data.get("receiver")),
+        "location_sent_from":clean_field(data.get("location_sent_from")),
+        "date":clean_field(data.get("date"))
+    }
+    # STORY
+    story=client.responses.create(
+        model="gpt-4.1-mini",
+        input=f"""
+Write clearly formatted sections:
+
+Context:
+Message Meaning:
+Historical Insight:
+Notable Details:
+
+TEXT:
 {raw}
 """
-        )
+    ).output[0].content[0].text
 
-        story=safe_json(st.output[0].content[0].text)
+    # ✅ UPDATED STAMP (ONLY CHANGE)
+    stamp_resp = client.responses.create(
+        model="gpt-4.1",
+        input=[{
+            "role":"user",
+            "content":[
+                {"type":"input_text","text":"""
+Analyze ONLY the postage stamp in the postcard image.
 
-        save_postcard({
-            "location":loc,
-            "lat":lat,
-            "lon":lon,
-            "front":f64,
-            "back":b64,
-            "data":data,
-            "stamp":stamp,
-            "story":story
-        })
+Return structured output:
 
-        return render_template_string(
-            HTML,
-            raw=raw,
-            front=f64,
-            back=b64,
-            postcards=load_postcards()
-        )
+Country:
+Era (approx):
+Denomination:
+Key Symbols:
+Historical Context:
 
-    return render_template_string(HTML,postcards=posts)
+If no stamp or unclear, respond EXACTLY:
+Unable to interpret
+"""},
+                {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
+                {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
+            ]
+        }]
+    )
+
+    stamp = stamp_resp.output[0].content[0].text.strip()
+    if not stamp or len(stamp) < 5:
+        stamp = "Unable to interpret"
+
+    loc=data.get("location_sent_from")
+    lat,lon=geocode(loc)
+
+    save_postcard({
+        "location":loc,"lat":lat,"lon":lon,
+        "front":f64,"back":b64,
+        "data":data,"story":story,"stamp":stamp
+    })
+
+    return jsonify({
+        "data":data,
+        "story":story,
+        "stamp":stamp,
+        "front":f64,
+        "back":b64,
+        "lat":lat,
+        "lon":lon
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
