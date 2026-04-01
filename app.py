@@ -180,6 +180,148 @@ button{
 
 .progress{height:8px;background:#ddd;margin-top:15px;border-radius:6px;}
 .bar{height:100%;width:0;background:#8b6f47;border-radius:6px;}
+
+/* --- STORY Styles --- */
+.story-container{
+  max-width: 720px;
+  margin: 10px auto;
+  line-height: 1.7;
+  font-size: 16px;
+  color: #3e3625;
+  background: #fffdf6;
+  padding: 20px 24px;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  border: 1px solid #e6d8b5;
+}
+
+.story-container h3{
+  margin-top: 18px;
+  margin-bottom: 6px;
+  color: #8b6f47;
+  font-size: 16px;
+}
+
+.story-container p{
+  margin: 6px 0 12px 0;
+}
+
+.story-title{
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 12px;
+  color: #5a4d36;
+  border-bottom: 1px solid #e0d2aa;
+  padding-bottom: 6px;
+}
+
+.story-body{
+  font-size: 16px;
+}
+
+.overview-grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.overview-item{
+  background: #fffdf6;
+  border: 1px solid #e6d8b5;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.overview-label{
+  font-size: 12px;
+  color: #7a6a4f;
+  margin-bottom: 4px;
+}
+
+.overview-value{
+  font-size: 15px;
+  font-weight: bold;
+  color: #3e3625;
+}
+
+.history-card{
+  display:flex;
+  gap:12px;
+  margin-bottom:12px;
+  padding:10px;
+  border-radius:10px;
+  background:#fffdf6;
+  border:1px solid #e6d8b5;
+  transition: all 0.2s ease;
+}
+
+.history-card:hover{
+  background:#f9f2df;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+
+.history-card img{
+  width:70px;
+  height:70px;
+  object-fit:cover;
+  border-radius:8px;
+}
+
+.history-meta{
+  flex:1;
+}
+
+.history-sender{
+  font-weight:bold;
+  color:#3e3625;
+}
+
+.history-sub{
+  font-size:12px;
+  color:#7a6a4f;
+  margin-top:2px;
+}
+
+.history-delete{
+  color:#a94442;
+  font-weight:bold;
+  cursor:pointer;
+  padding:5px;
+}
+
+.output-images{
+  display:flex;
+  gap:16px;
+  margin-bottom:20px;
+}
+
+.postcard-frame{
+  flex:1;
+  background:#fffdf6;
+  border:1px solid #e6d8b5;
+  border-radius:10px;
+  padding:10px;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+  transition: transform 0.2s ease;
+}
+
+.postcard-frame:hover{
+  transform: scale(1.02);
+}
+
+.postcard-frame img{
+  width:100%;
+  height:240px;
+  object-fit:contain;
+  background:#f5ecd9;
+  border-radius:6px;
+}
+
+
+
+
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -239,6 +381,8 @@ function switchTab(tab){
  if(tab==="map"){ setTimeout(initDetailMap,100); }
 }
 
+
+
 let detailMap;
 function initDetailMap(){
  if(!window.currentLat || !window.currentLon) return;
@@ -283,10 +427,16 @@ async function submitForm(){
     window.currentLon = data.lon;
 
     document.querySelector(".output").innerHTML = `
-      <div class="output-images">
+    <div class="output-images">
+    <div class="postcard-frame">
+        <div class="postcard-label">Front</div>
         <img src="data:image/jpeg;base64,${data.front}">
+    </div>
+    <div class="postcard-frame">
+        <div class="postcard-label">Back</div>
         <img src="data:image/jpeg;base64,${data.back}">
-      </div>
+    </div>
+    </div>
 
       <div class="tabs">
         <div class="tab active" id="tab-overview" onclick="switchTab('overview')">Overview</div>
@@ -295,15 +445,39 @@ async function submitForm(){
         <div class="tab" id="tab-map" onclick="switchTab('map')">Map</div>
       </div>
 
-      <div id="content-overview" class="tab-content active">
-        <p><b>Sender:</b> ${data.data.sender}</p>
-        <p><b>Receiver:</b> ${data.data.receiver}</p>
-        <p><b>Location:</b> ${data.data.location_sent_from}</p>
-        <p><b>Date:</b> ${data.data.date}</p>
-      </div>
+            <div id="content-overview" class="tab-content active">
+                <div class="overview-grid">
+
+            <div class="overview-item">
+            <div class="overview-label">Sender</div>
+            <div class="overview-value">${data.data.sender}</div>
+            </div>
+
+            <div class="overview-item">
+            <div class="overview-label">Receiver</div>
+            <div class="overview-value">${data.data.receiver}</div>
+            </div>
+
+            <div class="overview-item">
+            <div class="overview-label">Location</div>
+            <div class="overview-value">${data.data.location_sent_from}</div>
+            </div>
+
+            <div class="overview-item">
+            <div class="overview-label">Date</div>
+            <div class="overview-value">${data.data.date}</div>
+            </div>
+
+        </div>
+        </div>
 
       <div id="content-story" class="tab-content">
-        <div style="white-space: pre-line;">${data.story}</div>
+        <div class="story-container">
+            <div class="story-title">Postcard Analysis</div>
+            <div class="story-body" style="white-space: pre-line;">
+              ${data.story}
+            </div>
+        </div>
       </div>
 
       <div id="content-stamp" class="tab-content">
@@ -343,15 +517,13 @@ async function openHistory(){
       <div class="history-card">
         <img src="data:image/jpeg;base64,${p.front || ''}">
         
-        <div style="flex:1;cursor:pointer;" onclick="loadPostcard(${i})">
-          <b>${sender}</b><br>
-          <span style="font-size:12px;color:#7a6a4f;">
-            ${location} • ${date}
-          </span>
-        </div>
+        <div class="history-meta" onclick="loadPostcard(${i})">
+        <div class="history-sender">${sender}</div>
+        <div class="history-sub">${location} • ${date}</div>
+    </div>
 
-        <div style="cursor:pointer;color:red;font-weight:bold;padding:5px;"
-             onclick="deletePostcard('${p.hash}')">✖</div>
+    <div class="history-delete"
+     onclick="deletePostcard('${p.hash}')">✖</div>
       </div>
     `;
   });
@@ -435,8 +607,14 @@ function loadPostcard(index){
   // render postcard into main output (same structure as submitForm)
   document.querySelector(".output").innerHTML=`
     <div class="output-images">
-      <img src="data:image/jpeg;base64,${p.front}">
-      <img src="data:image/jpeg;base64,${p.back}">
+    <div class="postcard-frame">
+        <div class="postcard-label">Front</div>
+        <img src="data:image/jpeg;base64,${p.front}">
+    </div>
+    <div class="postcard-frame">
+        <div class="postcard-label">Back</div>
+        <img src="data:image/jpeg;base64,${p.back}">
+    </div>
     </div>
 
     <div class="tabs">
