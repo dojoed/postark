@@ -102,14 +102,7 @@ body{margin:0;font-family:Georgia;background:#f5ecd9;}
  border-radius:6px;margin-top:10px;
 }
 
-.output{
-  background:#fffaf0;
-  padding:24px;
-  border-radius:14px;
-  margin-top:20px;
-  box-shadow:0 8px 20px rgba(0,0,0,0.08);
-  border:1px solid #e6d8b8;
-}
+.output{background:#fffaf0;padding:20px;border-radius:10px;margin-top:20px;}
 
 .output-images{display:flex;gap:10px;margin-bottom:15px;}
 .output-images img{
@@ -117,18 +110,7 @@ body{margin:0;font-family:Georgia;background:#f5ecd9;}
 }
 
 button{
-  padding:10px 18px;
-  background:#8b6f47;
-  color:white;
-  border:none;
-  border-radius:8px;
-  cursor:pointer;
-  transition:all 0.2s ease;
-}
-
-button:hover{
-  background:#7a5f3d;
-  transform:translateY(-1px);
+ padding:10px 18px;background:#8b6f47;color:white;border:none;border-radius:6px;
 }
 
 .history-btn{
@@ -172,24 +154,8 @@ button:hover{
 
 /* --- TABS --- */
 .tabs{display:flex;gap:10px;margin-bottom:15px;}
-.tab{
-  padding:10px 14px;
-  border-radius:8px;
-  background:#e5d7b5;
-  cursor:pointer;
-  font-size:13px;
-  transition:all 0.2s ease;
-}
-
-.tab:hover{
-  background:#d8c79f;
-}
-
-.tab.active{
-  background:#8b6f47;
-  color:#fff;
-  box-shadow:0 4px 10px rgba(0,0,0,0.15);
-}
+.tab{padding:8px 12px;border-radius:6px;background:#e5d7b5;cursor:pointer;}
+.tab.active{background:#8b6f47;color:#fff;}
 .tab-content{display:none;}
 .tab-content.active{display:block;}
 #detailMap{height:300px;border-radius:10px;margin-top:10px;}
@@ -580,27 +546,23 @@ def history():
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
-        print("➡️ /analyze called")
-
         if "front" not in request.files or "back" not in request.files:
-            print("❌ Missing files")
             return jsonify({"error": "Missing files"}), 400
 
         front_file = request.files["front"]
         back_file = request.files["back"]
 
         if front_file.filename == "" or back_file.filename == "":
-            print("❌ Empty filenames")
             return jsonify({"error": "Empty file upload"}), 400
 
-        print("📥 Reading files")
         f = front_file.read()
         b = back_file.read()
 
+        # ✅ FIX: define these BEFORE using them
         f64 = encode_bytes(f)
         b64 = encode_bytes(b)
 
-        print("🧠 Starting OCR")
+        # OCR
         ocr = client.responses.create(
             model="gpt-4.1",
             input=[{"role":"user","content":[
@@ -611,16 +573,29 @@ def analyze():
         )
 
         raw = ocr.output_text
-        print("✅ OCR complete")
 
         if not raw:
-            print("❌ OCR empty")
             return jsonify({"error": "OCR returned empty text"}), 500
 
-        print("🧩 Parsing structured data")
+        # --- PARSE ---
         parsed = client.responses.create(
             model="gpt-4.1",
-            input=f"""..."""
+            input=f"""
+    Extract structured data from the postcard text.
+
+    Return STRICT JSON only. No explanation.
+
+    Format:
+    {{
+    "sender": "",
+    "receiver": "",
+    "location_sent_from": "",
+    "date": ""
+    }}
+
+    TEXT:
+    {raw}
+    """
         )
 
         parsed_text = parsed.output_text
@@ -633,13 +608,23 @@ def analyze():
             "date": clean_field(data.get("date"))
         }
 
-        print("📖 Generating story")
+        # STORY
         story = client.responses.create(
             model="gpt-4.1-mini",
-            input=f"""..."""
+            input=f"""
+    Write clearly formatted sections:
+
+    Context:
+    Message Meaning:
+    Historical Insight:
+    Notable Details:
+
+    TEXT:
+    {raw}
+    """
         ).output_text
 
-        print("📬 Analyzing stamp")
+        # STAMP
         stamp_resp = client.responses.create(
             model="gpt-4.1",
             input=[{
@@ -656,11 +641,11 @@ def analyze():
         if not stamp or len(stamp) < 5:
             stamp = "Unable to interpret"
 
-        print("🌍 Geocoding")
+        # GEO
         loc = data.get("location_sent_from")
         lat, lon = geocode(loc)
 
-        print("💾 Saving postcard")
+        # SAVE
         save_postcard({
             "hash": image_hash(f + b),
             "location": loc,
@@ -673,8 +658,6 @@ def analyze():
             "stamp": stamp
         })
 
-        print("🎉 Done")
-
         return jsonify({
             "data": data,
             "story": story,
@@ -684,10 +667,9 @@ def analyze():
             "lat": lat,
             "lon": lon
         })
-
     except Exception as e:
         print("🔥 ANALYZE ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
-    
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5001, use_reloader=False)
+    app.run(debug=True, port=5001)
