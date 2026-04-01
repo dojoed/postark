@@ -153,11 +153,60 @@ button{
 }
 
 /* --- TABS --- */
-.tabs{display:flex;gap:10px;margin-bottom:15px;}
-.tab{padding:8px 12px;border-radius:6px;background:#e5d7b5;cursor:pointer;}
-.tab.active{background:#8b6f47;color:#fff;}
-.tab-content{display:none;}
-.tab-content.active{display:block;}
+.tabs{
+  display:flex;
+  gap:8px;
+  margin-bottom:18px;
+  border-bottom:1px solid #e0d2aa;
+}
+
+.tab{
+  padding:10px 14px;
+  cursor:pointer;
+  color:#6b5c3e;
+  position:relative;
+  transition: all 0.2s ease;
+}
+
+/* hover effect */
+.tab:hover{
+  color:#3e3625;
+}
+
+/* underline animation */
+.tab::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:-1px;
+  width:0%;
+  height:2px;
+  background:#8b6f47;
+  transition: width 0.25s ease;
+}
+
+/* active tab */
+.tab.active{
+  color:#3e3625;
+  font-weight:bold;
+}
+
+.tab.active::after{
+  width:100%;
+}
+
+.tab-content{
+  display:block;
+  opacity:0;
+  transition: opacity 0.25s ease;
+  height:0;
+  overflow:hidden;
+}
+
+.tab-content.active{
+  opacity:1;
+  height:auto;
+}
 #detailMap{height:300px;border-radius:10px;margin-top:10px;}
 
 /* --- LOADER --- */
@@ -319,8 +368,60 @@ button{
   border-radius:6px;
 }
 
+.img-modal{
+  display:none;
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,0.85);
+  justify-content:center;
+  align-items:center;
+  z-index:10000;
+}
 
+.img-modal img{
+  max-width:90%;
+  max-height:90%;
+  border-radius:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.5);
+  background:#fff;
+  padding:10px;
+}
 
+.modal-content{
+  position: relative;
+}
+
+.modal-close{
+  position:absolute;
+  top:-10px;
+  right:-10px;
+  background:#fff;
+  border-radius:50%;
+  width:28px;
+  height:28px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:bold;
+  cursor:pointer;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+}
+
+.history-card{
+  opacity:0;
+  transform: translateY(10px);
+  animation: fadeSlideIn 0.4s ease forwards;
+}
+
+@keyframes fadeSlideIn{
+  to{
+    opacity:1;
+    transform: translateY(0);
+  }
+}
 
 </style>
 
@@ -430,11 +531,13 @@ async function submitForm(){
     <div class="output-images">
     <div class="postcard-frame">
         <div class="postcard-label">Front</div>
-        <img src="data:image/jpeg;base64,${data.front}">
+        <img src="data:image/jpeg;base64,${data.front}"
+            onclick="openModal(this.src)">
     </div>
     <div class="postcard-frame">
         <div class="postcard-label">Back</div>
-        <img src="data:image/jpeg;base64,${data.back}">
+        <img src="data:image/jpeg;base64,${data.back}"
+            onclick="openModal(this.src)">
     </div>
     </div>
 
@@ -509,6 +612,7 @@ async function openHistory(){
   let html = "";
 
   data.forEach((p, i) => {
+    const delay = i * 0.05;
     const sender = p.data?.sender || "Unknown";
     const location = p.data?.location_sent_from || "Unknown";
     const date = p.data?.date || "Unknown";
@@ -545,12 +649,13 @@ async function refreshHistory(){
   let html = "";
 
   data.forEach((p, i) => {
+    const delay = i * 0.05;
     const sender = p.data?.sender || "Unknown";
     const location = p.data?.location_sent_from || "Unknown";
     const date = p.data?.date || "Unknown";
 
     html += `
-      <div class="history-card">
+      <div class="history-card" style="animation-delay:${delay}s">
         <img src="data:image/jpeg;base64,${p.front || ''}">
         
         <div style="flex:1;cursor:pointer;" onclick="loadPostcard(${i})">
@@ -609,11 +714,13 @@ function loadPostcard(index){
     <div class="output-images">
     <div class="postcard-frame">
         <div class="postcard-label">Front</div>
-        <img src="data:image/jpeg;base64,${p.front}">
+        <img src="data:image/jpeg;base64,${p.front}"
+            onclick="openModal(this.src)">
     </div>
     <div class="postcard-frame">
         <div class="postcard-label">Back</div>
-        <img src="data:image/jpeg;base64,${p.back}">
+        <img src="data:image/jpeg;base64,${p.back}"
+            onclick="openModal(this.src)">
     </div>
     </div>
 
@@ -643,6 +750,18 @@ function loadPostcard(index){
       <div id="detailMap"></div>
     </div>
   `;
+}
+
+function openModal(src){
+  const modal = document.getElementById("imageModal");
+  const img = document.getElementById("modalImg");
+
+  img.src = src;
+  modal.style.display = "flex";
+}
+
+function closeModal(){
+  document.getElementById("imageModal").style.display = "none";
 }
 
 </script>
@@ -700,6 +819,13 @@ function loadPostcard(index){
 <div id="panel" class="panel">
 <button onclick="closePanel()">Close</button>
 <div id="panelContent"></div>
+</div>
+
+<div id="imageModal" class="img-modal" onclick="if(event.target === this) closeModal()">
+  <div class="modal-content">
+    <span class="modal-close" onclick="closeModal()">✕</span>
+    <img id="modalImg">
+  </div>
 </div>
 
 </body>
