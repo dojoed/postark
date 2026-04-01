@@ -228,6 +228,13 @@ button{
 .step.done::before{content:"✔ ";color:#8b6f47;}
 
 .progress{height:8px;background:#ddd;margin-top:15px;border-radius:6px;}
+.bar{
+  height:100%;
+  width:0;
+  background: linear-gradient(90deg, #8b6f47, #a98c5a);
+  border-radius:6px;
+  transition: width 0.4s ease;
+}
 .bar{height:100%;width:0;background:#8b6f47;border-radius:6px;}
 
 /* --- STORY Styles --- */
@@ -421,6 +428,33 @@ button{
     opacity:1;
     transform: translateY(0);
   }
+}
+
+.loader-box{
+  background:#fff;
+  padding:30px;
+  border-radius:12px;
+  width:340px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.25);
+  text-align:center;
+}
+
+/* title stronger */
+.loader-title{
+  font-weight:bold;
+  font-size:16px;
+  margin-bottom:6px;
+}
+
+/* subtle animation pulse */
+.loader-box{
+  animation: loaderPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes loaderPulse{
+  0%{transform: scale(1);}
+  50%{transform: scale(1.02);}
+  100%{transform: scale(1);}
 }
 
 </style>
