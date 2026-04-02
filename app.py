@@ -235,7 +235,7 @@ button{
   border-radius:6px;
   transition: width 0.4s ease;
 }
-.bar{height:100%;width:0;background:#8b6f47;border-radius:6px;}
+
 
 /* --- STORY Styles --- */
 .story-container{
@@ -252,14 +252,19 @@ button{
 }
 
 .story-container h3{
-  margin-top: 18px;
-  margin-bottom: 6px;
+  margin-top: 20px;
+  margin-bottom: 8px;
   color: #8b6f47;
-  font-size: 16px;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border-bottom: 1px solid #e6d8b5;
+  padding-bottom: 4px;
 }
 
 .story-container p{
-  margin: 6px 0 12px 0;
+  margin: 8px 0 14px 0;
+  line-height: 1.75;
 }
 
 .story-title{
@@ -285,20 +290,29 @@ button{
 .overview-item{
   background: #fffdf6;
   border: 1px solid #e6d8b5;
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  transition: all 0.2s ease;
+}
+
+.overview-item:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.08);
 }
 
 .overview-label{
-  font-size: 12px;
-  color: #7a6a4f;
-  margin-bottom: 4px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #9a8a6a;
+  margin-bottom: 6px;
 }
 
 .overview-value{
-  font-size: 15px;
-  font-weight: bold;
-  color: #3e3625;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2f281d;
 }
 
 .history-card{
@@ -457,6 +471,55 @@ button{
   100%{transform: scale(1);}
 }
 
+#loaderMessage{
+  font-size:13px;
+  color:#8b6f47;
+  margin-bottom:12px;
+  font-style:italic;
+  min-height:18px; /* prevents layout jump */
+  transition: opacity 0.2s ease;
+}
+
+.map-container{
+  background:#fffdf6;
+  border:1px solid #e6d8b5;
+  border-radius:10px;
+  padding:12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.map-title{
+  font-size:14px;
+  font-weight:bold;
+  color:#5a4d36;
+  margin-bottom:8px;
+}
+
+.stamp-container{
+  max-width: 720px;
+  margin: 10px auto;
+  background:#fffdf6;
+  border:1px solid #e6d8b5;
+  border-radius:10px;
+  padding:18px 20px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.stamp-title{
+  font-size:16px;
+  font-weight:bold;
+  color:#5a4d36;
+  margin-bottom:10px;
+  border-bottom:1px solid #e0d2aa;
+  padding-bottom:6px;
+}
+
+.stamp-body{
+  font-size:15px;
+  line-height:1.6;
+  color:#3e3625;
+}
+
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -471,6 +534,15 @@ const steps=[
  "Finalizing"
 ];
 
+const messages = [
+  "Preparing images...",
+  "Reading handwriting...",
+  "Extracting key details...",
+  "Inspecting stamp...",
+  "Building historical context...",
+  "Finalizing results..."
+];
+
 let loaderInterval;
 
 function startLoader(){
@@ -482,6 +554,10 @@ function startLoader(){
  let i=0;
  loaderInterval=setInterval(()=>{
    let el=document.querySelectorAll(".step");
+   
+   const msg = document.getElementById("loaderMessage");
+   if(msg) msg.innerText = messages[i] || "";
+   
    if(i<el.length){
      if(i>0){el[i-1].classList.remove("active");el[i-1].classList.add("done");}
      el[i].classList.add("active");
@@ -535,6 +611,62 @@ async function deletePostcard(hash){
   await fetch('/delete/' + hash, { method: 'DELETE' });
 
   refreshHistory();
+}
+
+function formatStory(text){
+  if(!text) return "";
+
+  const sections = [
+    "Context:",
+    "Message Meaning:",
+    "Historical Insight:",
+    "Notable Details:"
+  ];
+
+  let formatted = text;
+
+  sections.forEach(section => {
+    const title = section.replace(":", "");
+    formatted = formatted.replaceAll(
+      section,
+      `</p><h3>${title}</h3><p>`
+    );
+  });
+
+  // wrap whole thing safely
+  formatted = "<p>" + formatted + "</p>";
+
+  // clean double paragraph breaks
+  formatted = formatted.replace("<p></p>", "")
+
+  return formatted;
+}
+
+function formatStamp(text){
+  if(!text) return "";
+
+  const sections = [
+    "Country:",
+    "Year:",
+    "Denomination:",
+    "Design:",
+    "Historical Context:"
+  ];
+
+  let formatted = text;
+
+  sections.forEach(section => {
+    const title = section.replace(":", "");
+    formatted = formatted.replaceAll(
+      section,
+      `</p><h3>${title}</h3><p>`
+    );
+  });
+
+  formatted = "<p>" + formatted + "</p>";
+  formatted = formatted.replace(/<p><\/p>/g, "");
+
+  return formatted;
 }
 
 async function submitForm(){
@@ -611,19 +743,29 @@ async function submitForm(){
       <div id="content-story" class="tab-content">
         <div class="story-container">
             <div class="story-title">Postcard Analysis</div>
-            <div class="story-body" style="white-space: pre-line;">
-              ${data.story}
+            <div class="story-body">
+                ${formatStory(data.story)}
             </div>
         </div>
       </div>
 
-      <div id="content-stamp" class="tab-content">
-        <div style="white-space: pre-line;">${data.stamp}</div>
-      </div>
+        <div id="content-stamp" class="tab-content">
+        <div class="stamp-container">
+            <div class="stamp-title">Stamp Analysis</div>
+            <div class="stamp-body">
+            ${formatStamp(data.stamp)}
+            </div>
+        </div>
+        </div>
 
-      <div id="content-map" class="tab-content">
-        <div id="detailMap"></div>
-      </div>
+        <div id="content-map" class="tab-content">
+        <div class="map-container">
+            <div class="map-title">
+                Postcard Origin — ${data.data.location_sent_from || "Unknown location"}
+            </div>
+            <div id="detailMap"></div>
+        </div>
+        </div>
     
     `;
     switchTab('overview');
@@ -777,11 +919,21 @@ function loadPostcard(index){
     </div>
 
     <div id="content-stamp" class="tab-content">
-      <div style="white-space: pre-line;">${p.stamp}</div>
+    <div class="stamp-container">
+        <div class="stamp-title">Stamp Analysis</div>
+        <div class="stamp-body">
+        ${formatStamp(data.stamp)}
+        </div>
+    </div>
     </div>
 
     <div id="content-map" class="tab-content">
-      <div id="detailMap"></div>
+    <div class="map-container">
+        <div class="map-title">
+            Postcard Origin — ${p.data.location_sent_from || "Unknown location"}
+        </div>
+        <div id="detailMap"></div>
+    </div>
     </div>
   `;
 }
@@ -845,6 +997,7 @@ function closeModal(){
 <div class="loader-box">
 <div class="loader-title">Analyzing your postcard</div>
 <div class="loader-sub">Upload front & back images, then click Analyze</div>
+<div id="loaderMessage" style="font-size:13px;color:#7a6a4f;margin-bottom:10px;"></div>
 <div id="steps"></div>
 <div class="progress"><div id="bar" class="bar"></div></div>
 </div>
