@@ -235,7 +235,7 @@ button{
   border-radius:6px;
   transition: width 0.4s ease;
 }
-
+.bar{height:100%;width:0;background:#8b6f47;border-radius:6px;}
 
 /* --- STORY Styles --- */
 .story-container{
@@ -642,32 +642,6 @@ function formatStory(text){
   return formatted;
 }
 
-function formatStamp(text){
-  if(!text) return "";
-
-  const sections = [
-    "Country:",
-    "Year:",
-    "Denomination:",
-    "Design:",
-    "Historical Context:"
-  ];
-
-  let formatted = text;
-
-  sections.forEach(section => {
-    const title = section.replace(":", "");
-    formatted = formatted.replaceAll(
-      section,
-      `</p><h3>${title}</h3><p>`
-    );
-  });
-
-  formatted = "<p>" + formatted + "</p>";
-  formatted = formatted.replace(/<p><\/p>/g, "");
-
-  return formatted;
-}
 
 async function submitForm(){
   startLoader();
@@ -752,8 +726,8 @@ async function submitForm(){
         <div id="content-stamp" class="tab-content">
         <div class="stamp-container">
             <div class="stamp-title">Stamp Analysis</div>
-            <div class="stamp-body">
-            ${formatStamp(data.stamp)}
+            <div class="stamp-body" style="white-space: pre-line;">
+            ${data.stamp}
             </div>
         </div>
         </div>
@@ -921,8 +895,8 @@ function loadPostcard(index){
     <div id="content-stamp" class="tab-content">
     <div class="stamp-container">
         <div class="stamp-title">Stamp Analysis</div>
-        <div class="stamp-body">
-        ${formatStamp(data.stamp)}
+        <div class="stamp-body" style="white-space: pre-line;">
+        ${data.stamp}
         </div>
     </div>
     </div>
