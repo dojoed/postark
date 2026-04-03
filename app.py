@@ -48,24 +48,103 @@ def image_hash(b):
 def safe_json(t):
     try:
         return json.loads(t.replace("```json","").replace("```","").strip())
-    except:
+    except Exception as e:
+        print("JSON parse error:", t)
         return {}
-
+    
 def clean_field(val):
     return val if val else "Unable to interpret"
 
 def geocode(loc):
     try:
-        r=requests.get(
+        r = requests.get(
             "https://nominatim.openstreetmap.org/search",
-            params={"q":loc,"format":"json"},
-            headers={"User-Agent":"app"}
+            params={"q": loc, "format": "json"},
+            headers={"User-Agent": "app"},
+            timeout=3
         ).json()
         if r:
             return float(r[0]["lat"]),float(r[0]["lon"])
     except:
         pass
     return None,None
+
+def detect_stamp_bbox(f64, b64):
+    try:
+        resp = client.responses.create(
+            model="gpt-4.1",
+            input=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": """
+Identify the postage stamp in this postcard.
+
+Return STRICT JSON only:
+{
+  "x": <left>,
+  "y": <top>,
+  "width": <width>,
+  "height": <height>
+}
+
+Rules:
+- Coordinates are relative to the BACK image
+- Values must be between 0 and 1
+- Include the ENTIRE stamp with some margin
+- Do NOT crop too tightly
+- It is better to include extra space than to cut off any part of the stamp
+"""
+                    },
+                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
+                ]
+            }]
+        )
+
+        data = safe_json(resp.output_text)
+
+        return (
+            float(data.get("x", 0)),
+            float(data.get("y", 0)),
+            float(data.get("width", 0)),
+            float(data.get("height", 0))
+        )
+    except Exception as e:
+        print("Stamp detection error:", e)
+        return None
+
+from PIL import Image
+import io
+
+def crop_stamp(image_bytes, bbox):
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        w, h = img.size
+
+        x, y, bw, bh = bbox
+
+        padding = 0.08  # 8% padding (tune 0.05–0.15)
+
+        x = max(0, x - padding)
+        y = max(0, y - padding)
+        bw = min(1 - x, bw + padding * 2)
+        bh = min(1 - y, bh + padding * 2)
+
+        left = int(x * w)
+        top = int(y * h)
+        right = int((x + bw) * w)
+        bottom = int((y + bh) * h)
+
+        cropped = img.crop((left, top, right, bottom))
+
+        buffer = io.BytesIO()
+        cropped.save(buffer, format="JPEG")
+
+        return base64.b64encode(buffer.getvalue()).decode()
+    except Exception as e:
+        print("Crop error:", e)
+        return None
 
 import math
 
@@ -629,19 +708,62 @@ function initDetailMap(){
   if(window.currentLatTo && window.currentLonTo){
     const to = [window.currentLatTo, window.currentLonTo];
 
+    const bounds = L.latLngBounds([from, to]);
+    detailMap.fitBounds(bounds, { padding: [30,30] });
+
     L.marker(to).addTo(detailMap).bindPopup("Sent to");
 
     // --- DRAW LINE ---
-    const line = L.polyline([from, to], {
-      color: '#8b6f47',
-      weight: 3,
-      opacity: 0.8,
-      dashArray: '6,6'
+    // --- CURVED ARC ---
+    function createArc(from, to, offset = 0.3, steps = 50){
+    const latlngs = [];
+
+    for(let i = 0; i <= steps; i++){
+        const t = i / steps;
+
+        // linear interpolation
+        const lat = from[0] + (to[0] - from[0]) * t;
+        const lon = from[1] + (to[1] - from[1]) * t;
+
+        // add curve (sine wave offset)
+        const curve = Math.sin(Math.PI * t) * offset;
+
+        latlngs.push([
+        lat + curve,
+        lon
+        ]);
+    }
+
+    return latlngs;
+    }
+
+    const arcPoints = createArc(from, to);
+
+    // start with empty line
+    const line = L.polyline([], {
+    color: '#8b6f47',
+    weight: 3,
+    opacity: 0.9
     }).addTo(detailMap);
 
+    // animate drawing
+    let i = 0;
+    const speed = 30; // lower = faster
+
+    function drawLine(){
+    if(i < arcPoints.length){
+        line.addLatLng(arcPoints[i]);
+        i++;
+        setTimeout(drawLine, speed);
+    }
+    }
+
+    drawLine();
+
     // auto-fit both points
-    detailMap.fitBounds(line.getBounds(), { padding: [30,30] });
-  } else {
+
+    
+        } else {
     // fallback: just center origin
     detailMap.setView(from, 6);
   }
@@ -720,9 +842,9 @@ async function submitForm(){
     </div>
     <div class="postcard-frame">
         <div class="postcard-label">Back</div>
-        <img src="data:image/jpeg;base64,${data.back}"
-            onclick="openModal(this.src)">
-    </div>
+<img src="data:image/jpeg;base64,${data.back}"
+     onclick="openModal(this.src)">
+             </div>
     </div>
 
       <div class="tabs">
@@ -767,20 +889,44 @@ async function submitForm(){
         </div>
       </div>
 
-        <div id="content-stamp" class="tab-content">
-        <div class="stamp-container">
-            <div class="stamp-title">Stamp Analysis</div>
-            <div class="stamp-body" style="white-space: pre-line;">
-            ${data.stamp}
-            </div>
-        </div>
-        </div>
+<div id="content-stamp" class="tab-content">
+  <div class="stamp-container">
+
+    <div class="stamp-title">Stamp Analysis</div>
+
+    <div style="display:flex; gap:20px; align-items:flex-start;">
+
+            <img src="data:image/jpeg;base64,${data.stamp_image || data.back}"
+           style="width:120px;height:120px;object-fit:cover;
+                  object-position: top right;
+                  border:1px solid #e6d8b5;
+                  border-radius:8px;
+                  padding:6px;
+                  background:#fff;">
+
+      <div class="stamp-body" style="white-space: pre-line; flex:1;">
+        ${data.stamp}
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
 
         <div id="content-map" class="tab-content">
         <div class="map-container">
             <div class="map-title">
-                Postcard Origin — ${data.data.location_sent_from || "Unknown location"}
+                ${data.data.location_sent_from || "Unknown"} 
+                → 
+                ${data.data.location_sent_to || "Unknown"}
             </div>
+
+            ${data.distance_km ? `
+            <div style="font-size:13px;color:#7a6a4f;margin-bottom:8px;">
+                Distance traveled: ${data.distance_km} km
+            </div>
+        ` : ""}
             <div id="detailMap"></div>
         </div>
         </div>
@@ -899,8 +1045,8 @@ function loadPostcard(index){
   // restore map coords
     window.currentLat = p.lat_from;
     window.currentLon = p.lon_from;
-    window.currentLatTo = data.lat_to;
-    window.currentLonTo = data.lon_to;
+    window.currentLatTo = p.lat_to;
+    window.currentLonTo = p.lon_to;
 
   // close history panel
   document.getElementById("panel").style.display="none";
@@ -910,13 +1056,13 @@ function loadPostcard(index){
     <div class="output-images">
     <div class="postcard-frame">
         <div class="postcard-label">Front</div>
-        <img src="data:image/jpeg;base64,${p.front}"
+        <img src="data:image/jpeg;base64,${p.front || ''}"
             onclick="openModal(this.src)">
     </div>
     <div class="postcard-frame">
         <div class="postcard-label">Back</div>
-        <img src="data:image/jpeg;base64,${p.back}"
-            onclick="openModal(this.src)">
+        <img src="data:image/jpeg;base64,${p.back || ''}"            
+                onclick="openModal(this.src)">
     </div>
     </div>
 
@@ -940,18 +1086,44 @@ function loadPostcard(index){
 
     <div id="content-stamp" class="tab-content">
     <div class="stamp-container">
-        <div class="stamp-title">Stamp Analysis</div>
-        <div class="stamp-body" style="white-space: pre-line;">
-        ${data.stamp}
-        </div>
+
+    <div class="stamp-title">Stamp Analysis</div>
+
+    <div style="display:flex; gap:20px; align-items:flex-start;">
+
+      <!-- stamp preview (top-right crop) -->
+            <img src="data:image/jpeg;base64,${p.stamp_image || p.back}"
+           style="width:120px;height:120px;object-fit:cover;
+                  object-position: top right;
+                  border:1px solid #e6d8b5;
+                  border-radius:8px;
+                  padding:6px;
+                  background:#fff;">
+
+      <!-- analysis -->
+      <div class="stamp-body" style="white-space: pre-line; flex:1;">
+        ${p.stamp}
+      </div>
+
     </div>
-    </div>
+
+  </div>
+</div>
+    
 
     <div id="content-map" class="tab-content">
     <div class="map-container">
         <div class="map-title">
-            Postcard Origin — ${p.data.location_sent_from || "Unknown location"}
+            ${p.data.location_sent_from || "Unknown"} 
+            → 
+            ${p.data.location_sent_to || "Unknown"}
         </div>
+
+        ${p.distance_km ? `
+        <div style="font-size:13px;color:#7a6a4f;margin-bottom:8px;">
+            Distance traveled: ${p.distance_km} km
+        </div>
+        ` : ""}
         <div id="detailMap"></div>
     </div>
     </div>
@@ -1073,6 +1245,13 @@ def analyze():
         f64 = encode_bytes(f)
         b64 = encode_bytes(b)
 
+        # --- STAMP DETECTION + CROP ---
+        bbox = detect_stamp_bbox(f64, b64)
+        stamp_img = None
+
+        if bbox:
+            stamp_img = crop_stamp(b, bbox)
+        
         # OCR
         ocr = client.responses.create(
             model="gpt-4.1",
@@ -1150,10 +1329,41 @@ Format:
             input=[{
                 "role":"user",
                 "content":[
-                    {"type":"input_text","text":"Analyze ONLY the postage stamp in the postcard image."},
-                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
-                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
-                ]
+                    {
+                        "type":"input_text",
+                        "text": """
+        You are a philatelist (stamp expert).
+
+        Analyze ONLY the postage stamp in this postcard.
+
+        Provide a detailed, expert-level breakdown:
+
+        Identification:
+        - Country of origin
+        - Approximate year or era
+        - Denomination (value)
+
+        Design Details:
+        - Subject (person, place, symbol)
+        - Colors and artistic style
+        - Printing method (engraved, lithograph, etc if possible)
+
+        Historical Context:
+        - Why this stamp was issued
+        - Any notable significance
+
+        Condition Assessment:
+        - Visible wear, fading, or damage
+        - Postmark clarity
+
+        Rarity & Value Insight:
+        - Common or collectible?
+        - General value range (if known)
+
+        Be specific, structured, and authoritative.
+        """
+                    },
+                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{stamp_img or b64}"}                ]
             }]
         )
 
@@ -1163,15 +1373,16 @@ Format:
 
         # GEO
         loc_from = data.get("location_sent_from")
-
-        if not loc_from or loc_from == "Unable to interpret":
-            loc_from = data.get("location_sent_to")
-
-        lat_from, lon_from = geocode(loc_from)
-
-        # try to geocode receiver (may fail, that's ok)
         loc_to = data.get("location_sent_to")
-        lat_to, lon_to = geocode(loc_to)
+
+        lat_from, lon_from = (None, None)
+        lat_to, lon_to = (None, None)
+
+        if loc_from and loc_from != "Unable to interpret":
+            lat_from, lon_from = geocode(loc_from)
+
+        if loc_to and loc_to != "Unable to interpret":
+            lat_to, lon_to = geocode(loc_to)
         # --- DISTANCE ---
         distance_km = None
 
@@ -1192,6 +1403,7 @@ Format:
             "data": data,
             "story": story,
             "stamp": stamp,
+            "stamp_image": stamp_img,
             "distance_km": distance_km
         })
 
@@ -1205,7 +1417,8 @@ Format:
             "lon_from": lon_from,
             "lat_to": lat_to,
             "lon_to": lon_to,
-            "distance_km": distance_km
+            "distance_km": distance_km,
+            "stamp_image": stamp_img
         })
     except Exception as e:
         print("🔥 ANALYZE ERROR:", str(e))
