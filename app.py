@@ -19,6 +19,7 @@ def load_postcards():
 def save_postcard(entry):
     data = load_postcards()
     new_hash = entry.get("hash")
+    
 
     for existing in data:
         if existing.get("hash") == new_hash:
@@ -65,6 +66,21 @@ def geocode(loc):
     except:
         pass
     return None,None
+
+import math
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # Earth radius in km
+
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    a = math.sin(dphi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda/2)**2
+
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 # --- HTML (UNCHANGED) ---
 HTML = """
@@ -596,13 +612,39 @@ function switchTab(tab){
 
 let detailMap;
 function initDetailMap(){
- if(!window.currentLat || !window.currentLon) return;
- if(detailMap){ detailMap.remove(); }
+  if(!window.currentLat || !window.currentLon) return;
 
- detailMap = L.map('detailMap').setView([window.currentLat, window.currentLon], 6);
- L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png')
-  .addTo(detailMap);
- L.marker([window.currentLat, window.currentLon]).addTo(detailMap);
+  if(detailMap){ detailMap.remove(); }
+
+  detailMap = L.map('detailMap').setView([window.currentLat, window.currentLon], 4);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png')
+    .addTo(detailMap);
+
+  // --- ORIGIN (sender) ---
+  const from = [window.currentLat, window.currentLon];
+  L.marker(from).addTo(detailMap).bindPopup("Sent from");
+
+  // --- DESTINATION (receiver) ---
+  if(window.currentLatTo && window.currentLonTo){
+    const to = [window.currentLatTo, window.currentLonTo];
+
+    L.marker(to).addTo(detailMap).bindPopup("Sent to");
+
+    // --- DRAW LINE ---
+    const line = L.polyline([from, to], {
+      color: '#8b6f47',
+      weight: 3,
+      opacity: 0.8,
+      dashArray: '6,6'
+    }).addTo(detailMap);
+
+    // auto-fit both points
+    detailMap.fitBounds(line.getBounds(), { padding: [30,30] });
+  } else {
+    // fallback: just center origin
+    detailMap.setView(from, 6);
+  }
 }
 
 async function deletePostcard(hash){
@@ -664,8 +706,10 @@ async function submitForm(){
     refreshHistory();
     document.getElementById("uploadWrapper").classList.add("collapsed");
 
-    window.currentLat = data.lat;
-    window.currentLon = data.lon;
+    window.currentLat = data.lat_from;
+    window.currentLon = data.lon_from;
+    window.currentLatTo = data.lat_to;
+    window.currentLonTo = data.lon_to;
 
     document.querySelector(".output").innerHTML = `
     <div class="output-images">
@@ -853,8 +897,10 @@ function loadPostcard(index){
   if(!p) return;
 
   // restore map coords
-  window.currentLat = p.lat;
-  window.currentLon = p.lon;
+    window.currentLat = p.lat_from;
+    window.currentLon = p.lon_from;
+    window.currentLatTo = data.lat_to;
+    window.currentLonTo = data.lon_to;
 
   // close history panel
   document.getElementById("panel").style.display="none";
@@ -1044,24 +1090,32 @@ def analyze():
 
         # --- PARSE ---
         parsed = client.responses.create(
-            model="gpt-4.1",
-            input=f"""
-    Extract structured data from the postcard text.
+    model="gpt-4.1",
+    input=f"""
+Extract structured data from the postcard text.
 
-    Return STRICT JSON only. No explanation.
+Return STRICT JSON only. No explanation.
 
-    Format:
+Identify:
+- sender (person writing)
+- receiver (person receiving)
+- location_sent_from (where postcard was sent from)
+- location_sent_to (destination city/state/country if present)
+- date
+
+Format:
     {{
     "sender": "",
     "receiver": "",
     "location_sent_from": "",
+    "location_sent_to": "",
     "date": ""
     }}
 
     TEXT:
     {raw}
     """
-        )
+    )
 
         parsed_text = parsed.output_text
         data = safe_json(parsed_text)
@@ -1070,6 +1124,7 @@ def analyze():
             "sender": clean_field(data.get("sender")),
             "receiver": clean_field(data.get("receiver")),
             "location_sent_from": clean_field(data.get("location_sent_from")),
+            "location_sent_to": clean_field(data.get("location_sent_to")),
             "date": clean_field(data.get("date"))
         }
 
@@ -1107,20 +1162,37 @@ def analyze():
             stamp = "Unable to interpret"
 
         # GEO
-        loc = data.get("location_sent_from")
-        lat, lon = geocode(loc)
+        loc_from = data.get("location_sent_from")
+
+        if not loc_from or loc_from == "Unable to interpret":
+            loc_from = data.get("location_sent_to")
+
+        lat_from, lon_from = geocode(loc_from)
+
+        # try to geocode receiver (may fail, that's ok)
+        loc_to = data.get("location_sent_to")
+        lat_to, lon_to = geocode(loc_to)
+        # --- DISTANCE ---
+        distance_km = None
+
+        if lat_from and lon_from and lat_to and lon_to:
+            distance_km = round(haversine(lat_from, lon_from, lat_to, lon_to), 1)
+
 
         # SAVE
         save_postcard({
             "hash": image_hash(f + b),
-            "location": loc,
-            "lat": lat,
-            "lon": lon,
+            "location": loc_from,
+            "lat_from": lat_from,
+            "lon_from": lon_from,
+            "lat_to": lat_to,
+            "lon_to": lon_to,
             "front": f64,
             "back": b64,
             "data": data,
             "story": story,
-            "stamp": stamp
+            "stamp": stamp,
+            "distance_km": distance_km
         })
 
         return jsonify({
@@ -1129,8 +1201,11 @@ def analyze():
             "stamp": stamp,
             "front": f64,
             "back": b64,
-            "lat": lat,
-            "lon": lon
+            "lat_from": lat_from,
+            "lon_from": lon_from,
+            "lat_to": lat_to,
+            "lon_to": lon_to,
+            "distance_km": distance_km
         })
     except Exception as e:
         print("🔥 ANALYZE ERROR:", str(e))
