@@ -47,11 +47,25 @@ def image_hash(b):
 
 def safe_json(t):
     try:
-        return json.loads(t.replace("```json","").replace("```","").strip())
-    except Exception as e:
+        if not t:
+            return {}
+
+        cleaned = t.replace("```json", "").replace("```", "").strip()
+
+        # find first JSON object in string
+        start = cleaned.find("{")
+        end = cleaned.rfind("}") + 1
+
+        if start == -1 or end == 0:
+            print("No JSON object found:", t)
+            return {}
+
+        return json.loads(cleaned[start:end])
+
+    except Exception:
         print("JSON parse error:", t)
         return {}
-    
+        
 def clean_field(val):
     return val if val else "Unable to interpret"
 
@@ -88,28 +102,32 @@ Return STRICT JSON only:
   "width": <width>,
   "height": <height>
 }
-
-Rules:
-- Coordinates are relative to the BACK image
-- Values must be between 0 and 1
-- Include the ENTIRE stamp with some margin
-- Do NOT crop too tightly
-- It is better to include extra space than to cut off any part of the stamp
 """
                     },
-                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
+                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
                 ]
             }]
         )
 
         data = safe_json(resp.output_text)
 
-        return (
-            float(data.get("x", 0)),
-            float(data.get("y", 0)),
-            float(data.get("width", 0)),
-            float(data.get("height", 0))
-        )
+        x = float(data.get("x"))
+        y = float(data.get("y"))
+        w = float(data.get("width"))
+        h = float(data.get("height"))
+
+        # validate bounds
+        if not (0 <= x <= 1 and 0 <= y <= 1 and 0 < w <= 1 and 0 < h <= 1):
+            print("Invalid bbox range:", data)
+            return None
+
+        # reject tiny boxes
+        if w < 0.05 or h < 0.05:
+            print("BBox too small:", data)
+            return None
+
+        return (x, y, w, h)
+
     except Exception as e:
         print("Stamp detection error:", e)
         return None
@@ -1262,10 +1280,12 @@ def analyze():
             ]}]
         )
 
-        raw = ocr.output_text
+        raw = getattr(ocr, "output_text", None)
 
         if not raw:
+            print("OCR RAW RESPONSE:", ocr)
             return jsonify({"error": "OCR returned empty text"}), 500
+
 
         # --- PARSE ---
         parsed = client.responses.create(
