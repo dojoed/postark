@@ -1112,6 +1112,47 @@ function initDetailMap(){
   }
 }
 
+async function restoreImage(){
+  const fileInput = document.getElementById("restoreFile");
+
+  if(!fileInput.files.length){
+    alert("Upload an image first");
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append("image", fileInput.files[0]);
+
+  document.getElementById("restoreOutput").innerHTML = "Restoring...";
+
+  try{
+    const res = await fetch("/restore", {
+      method: "POST",
+      body: fd
+    });
+
+    const data = await res.json();
+
+    document.getElementById("restoreOutput").innerHTML = `
+      <div class="output-images">
+        <div class="postcard-frame">
+          <div class="postcard-label">Original</div>
+          <img src="data:image/jpeg;base64,${data.original}">
+        </div>
+
+        <div class="postcard-frame">
+          <div class="postcard-label">Restored</div>
+          <img src="data:image/jpeg;base64,${data.restored}">
+        </div>
+      </div>
+    `;
+  }
+  catch(e){
+    console.error(e);
+    alert("Restore failed");
+  }
+}
+
 async function openTimeline(){
   document.getElementById("panel").style.display="block";
 
@@ -1224,6 +1265,31 @@ function formatStory(text){
   formatted = formatted.replace(/<p>\s*<\/p>/g, "");
 
   return formatted;
+}
+
+function openRestoration(){
+  document.getElementById("uploadWrapper").classList.add("collapsed");
+
+  document.querySelector(".output").innerHTML = `
+    <div class="fade-in">
+
+      <h2 style="margin-bottom:10px;">Digital Restoration</h2>
+
+      <div class="upload-card" style="max-width:400px;">
+        <div class="upload-title">Upload Postcard Image</div>
+        <div class="upload-sub">We’ll enhance and restore it</div>
+        <input type="file" id="restoreFile" onchange="previewImage(this,'restorePreview')">
+        <div id="restorePreview" class="preview"></div>
+      </div>
+
+      <button onclick="restoreImage()" style="margin-top:15px;">
+        Restore Image
+      </button>
+
+      <div id="restoreOutput" style="margin-top:20px;"></div>
+
+    </div>
+  `;
 }
 
 
@@ -1422,12 +1488,13 @@ document.querySelector(".output").innerHTML = `
         </div>
     </div>
 
-      <div class="tabs">
+        <div class="tabs">
         <div class="tab active" id="tab-overview" onclick="switchTab('overview')">Overview</div>
         <div class="tab" id="tab-story" onclick="switchTab('story')">Story</div>
         <div class="tab" id="tab-stamp" onclick="switchTab('stamp')">Stamp</div>
+        <div class="tab" id="tab-appraisal" onclick="switchTab('appraisal')">Appraisal</div>
         <div class="tab" id="tab-map" onclick="switchTab('map')">Map</div>
-      </div>
+        </div>
 
             <div id="content-overview" class="tab-content active">
                 <div class="overview-grid">
@@ -1492,6 +1559,16 @@ document.querySelector(".output").innerHTML = `
   </div>
 </div>
 
+
+<div id="content-appraisal" class="tab-content">
+  <div class="stamp-container">
+    <div class="stamp-title">Postcard Appraisal</div>
+
+    <div class="stamp-body">
+      ${renderAppraisal(data.appraisal)}
+    </div>
+  </div>
+</div>
 
         <div id="content-map" class="tab-content">
         <div class="map-container">
@@ -1696,7 +1773,7 @@ function loadPostcard(index){
     <div class="stamp-title">Appraisal</div>
 
     <div class="stamp-body">
-      ${renderAppraisal(data.appraisal)}
+      ${renderAppraisal(p.appraisal)}
     </div>
   </div>
 </div>
@@ -1817,6 +1894,7 @@ function renderAppraisal(text){
   <div class="nav-btn" onclick="newAnalysis()">Analyze Postcards</div>
   <div class="nav-btn" onclick="openHistory()">View My Postcards</div>
   <div class="nav-btn" onclick="openTimeline()">Postcard Timeline</div>
+  <div class="nav-btn" onclick="openRestoration()">Restore Postcard</div>
   <div class="nav-btn" onclick="clearHistory()">Clear All History</div>
 </div>
 
@@ -1940,6 +2018,96 @@ def clear_all():
         return jsonify({"status": "cleared"})
     except Exception as e:
         print("🔥 CLEAR ERROR:", str(e))
+        return jsonify({"error": str(e)}), 500
+
+
+from PIL import Image
+import io
+
+def resize_if_needed(img_bytes, max_size=1024):
+    try:
+        img = Image.open(io.BytesIO(img_bytes))
+
+        # Convert to RGB (important for some uploads like PNG with alpha)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # Resize if too large
+        if max(img.size) > max_size:
+            img.thumbnail((max_size, max_size))
+
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=90)
+            return buffer.getvalue()
+
+        return img_bytes
+
+    except Exception as e:
+        print("Resize error:", e)
+        return img_bytes
+
+@app.route("/restore", methods=["POST"])
+def restore():
+    try:
+        if "image" not in request.files:
+            return jsonify({"error": "Missing image"}), 400
+
+        file = request.files["image"]
+        img_bytes = file.read()
+
+        img_bytes = resize_if_needed(img_bytes)
+        img_b64 = base64.b64encode(img_bytes).decode()
+
+        resp = client.responses.create(
+            model="gpt-4.1-mini",
+            input=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": """
+Restore this vintage postcard image.
+
+- Remove stains, creases, discoloration
+- Enhance faded ink and colors
+- Preserve layout and text exactly
+- Do NOT change content
+
+Return ONLY the restored image.
+"""
+                    },
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:image/jpeg;base64,{img_b64}"
+                    }
+                ]
+            }],
+            # 👇 THIS forces image output in older SDKs
+            response_format={"type": "image"}
+        )
+
+        # 🔥 robust extraction
+        restored = None
+
+        try:
+            for item in resp.output:
+                if hasattr(item, "content"):
+                    for c in item.content:
+                        if c.get("type") == "output_image":
+                            restored = c.get("image_base64")
+        except Exception:
+            print("FULL RESPONSE:", resp)
+
+        if not restored:
+            return jsonify({"error": "No image returned"}), 500
+
+        return jsonify({
+            "original": img_b64,
+            "restored": restored
+        })
+
+    except Exception as e:
+        print("🔥 RESTORE ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
 
 @app.route("/analyze", methods=["POST"])
