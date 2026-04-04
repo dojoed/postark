@@ -1249,6 +1249,7 @@ function renderTabs(){
       <div class="tab" id="tab-story" onclick="switchTab('story')">Story</div>
       <div class="tab" id="tab-stamp" onclick="switchTab('stamp')">Stamp</div>
       <div class="tab" id="tab-map" onclick="switchTab('map')">Map</div>
+      <div class="tab" id="tab-appraisal" onclick="switchTab('appraisal')">Appraisal</div>
     </div>
   `;
 }
@@ -1463,6 +1464,10 @@ document.querySelector(".output").innerHTML = `
         </div>
       </div>
 
+
+      
+
+      
 <div id="content-stamp" class="tab-content">
   <div class="stamp-container">
 
@@ -1644,7 +1649,9 @@ function loadPostcard(index){
       <div class="tab active" id="tab-overview" onclick="switchTab('overview')">Overview</div>
       <div class="tab" id="tab-story" onclick="switchTab('story')">Story</div>
       <div class="tab" id="tab-stamp" onclick="switchTab('stamp')">Stamp</div>
+      <div class="tab" id="tab-appraisal" onclick="switchTab('appraisal')">Postcard Appraisal</div>
       <div class="tab" id="tab-map" onclick="switchTab('map')">Map</div>
+
     </div>
 
     <div id="content-overview" class="tab-content active">
@@ -1683,7 +1690,16 @@ function loadPostcard(index){
 
   </div>
 </div>
-    
+
+<div id="content-appraisal" class="tab-content">
+  <div class="stamp-container">
+    <div class="stamp-title">Appraisal</div>
+
+    <div class="stamp-body">
+      ${renderAppraisal(data.appraisal)}
+    </div>
+  </div>
+</div>
 
     <div id="content-map" class="tab-content">
     <div class="map-container">
@@ -1755,6 +1771,36 @@ async function clearHistory(){
     alert("Unexpected error clearing history");
   }
 }
+
+function renderAppraisal(text){
+  if(!text) return "";
+
+  let cleaned = text;
+
+  const sections = [
+    "Estimated Value",
+    "Confidence",
+    "Key Value Drivers",
+    "Rarity",
+    "Condition Impact",
+    "Collector Appeal"
+  ];
+
+  sections.forEach(section => {
+    const regex = new RegExp(section + "\\s*:?","gi");
+
+    cleaned = cleaned.replace(
+      regex,
+      `</p><h4 class="stamp-section">${section}</h4><p>`
+    );
+  });
+
+  cleaned = "<p>" + cleaned + "</p>";
+  cleaned = cleaned.replace(/<p>\s*<\/p>/g, "");
+
+  return cleaned;
+}
+
 
 </script>
 
@@ -2081,6 +2127,72 @@ Format:
         if lat_from and lon_from and lat_to and lon_to:
             distance_km = round(haversine(lat_from, lon_from, lat_to, lon_to), 1)
 
+        appraisal_resp = client.responses.create(
+    model="gpt-4.1",
+    input=f"""
+You are an expert in vintage postcard collecting and historical ephemera.
+
+IMPORTANT:
+You are appraising the ENTIRE postcard, not just the stamp.
+
+Evaluate the postcard based on:
+- age and era
+- subject matter (location, theme, imagery)
+- uniqueness of message or handwriting
+- historical relevance
+- condition (inferred if needed)
+- stamp and postmark (as supporting signals only)
+
+Return clean plain text using this EXACT structure:
+
+Estimated Value:
+$X - $Y USD
+
+Confidence:
+Low / Medium / High
+
+Postcard Type:
+(e.g. linen era, photo postcard, tourist, holiday, etc.)
+
+Key Value Drivers:
+...
+
+Rarity:
+...
+
+Condition Impact:
+...
+
+Collector Appeal:
+...
+
+Summary:
+...
+
+Guidelines:
+- Most postcards are low value ($1–$15) unless clearly rare
+- Be conservative and realistic
+- Do NOT overvalue common tourist postcards
+- Only assign higher value if strong justification exists
+
+DATA:
+Sender: {data.get("sender")}
+Location: {data.get("location_sent_from")}
+Date: {data.get("date")}
+
+MESSAGE:
+{raw}
+
+STAMP (secondary signal):
+{stamp}
+
+STORY CONTEXT:
+{story}
+"""
+)
+
+
+        appraisal = appraisal_resp.output_text.strip()
 
         # SAVE
         save_postcard({
@@ -2097,6 +2209,7 @@ Format:
             "stamp": stamp,
             "stamp_image": stamp_img,
             "distance_km": distance_km,
+            "appraisal": appraisal,
             "debug_bbox": debug_bbox_img   # 👈 ADD THIS LINE
 
         })
@@ -2111,6 +2224,7 @@ Format:
             "lon_from": lon_from,
             "lat_to": lat_to,
             "lon_to": lon_to,
+            "appraisal": appraisal,
             "distance_km": distance_km,
             "stamp_image": stamp_img
         })
