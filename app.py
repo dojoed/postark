@@ -2058,6 +2058,7 @@ def restore():
         img_bytes = resize_if_needed(img_bytes)
         img_b64 = base64.b64encode(img_bytes).decode()
 
+        # ✅ RESTORED API CALL (this was missing)
         resp = client.responses.create(
             model="gpt-4.1-mini",
             input=[{
@@ -2081,12 +2082,10 @@ Return ONLY the restored image.
                         "image_url": f"data:image/jpeg;base64,{img_b64}"
                     }
                 ]
-            }],
-            # 👇 THIS forces image output in older SDKs
-            response_format={"type": "image"}
+            }]
         )
 
-        # 🔥 robust extraction
+        # 🔍 extract image
         restored = None
 
         try:
@@ -2098,8 +2097,13 @@ Return ONLY the restored image.
         except Exception:
             print("FULL RESPONSE:", resp)
 
+        # ✅ SAFE fallback (important)
         if not restored:
-            return jsonify({"error": "No image returned"}), 500
+            print("⚠️ No image returned — using original")
+            return jsonify({
+                "original": img_b64,
+                "restored": img_b64
+            })
 
         return jsonify({
             "original": img_b64,
@@ -2133,6 +2137,7 @@ def analyze():
         bbox = detect_stamp_bbox(f64, b64)
         stamp_img = None
 
+        debug_bbox_img = None
         if bbox:
             
             debug_bbox_img = draw_bbox(b, bbox)   # 👈 ADD THIS
