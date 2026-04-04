@@ -11,10 +11,15 @@ DATA_FILE = "postcards.json"
 
 # --- STORAGE ---
 def load_postcards():
-    if os.path.exists(DATA_FILE):
+    if not os.path.exists(DATA_FILE):
+        return []
+
+    try:
         with open(DATA_FILE, "r") as f:
             return json.load(f)
-    return []
+    except json.JSONDecodeError:
+        print("⚠️ Corrupted JSON file — resetting")
+        return []
 
 def save_postcard(entry):
     data = load_postcards()
@@ -41,6 +46,7 @@ def delete_postcard_by_hash(hash_value):
 def encode_bytes(b): return base64.b64encode(b).decode()
 
 import hashlib
+
 
 def image_hash(b):
     return hashlib.md5(b).hexdigest()
@@ -71,17 +77,28 @@ def clean_field(val):
 
 def geocode(loc):
     try:
+        if not loc or loc == "Unable to interpret":
+            return None, None
+
         r = requests.get(
             "https://nominatim.openstreetmap.org/search",
-            params={"q": loc, "format": "json"},
-            headers={"User-Agent": "app"},
+            params={"q": loc, "format": "json", "limit": 1},
+            headers={"User-Agent": "postcard-app"},
             timeout=3
         ).json()
-        if r:
-            return float(r[0]["lat"]),float(r[0]["lon"])
-    except:
-        pass
-    return None,None
+
+        if not r:
+            print("Geocode no results:", loc)
+            return None, None
+
+        lat = float(r[0]["lat"])
+        lon = float(r[0]["lon"])
+
+        return lat, lon
+
+    except Exception as e:
+        print("Geocode error:", loc, e)
+        return None, None
 
 def detect_stamp_bbox(f64, b64):
     try:
@@ -93,7 +110,13 @@ def detect_stamp_bbox(f64, b64):
                     {
                         "type": "input_text",
                         "text": """
-Identify the postage stamp in this postcard.
+Locate ONLY the postage stamp on this postcard.
+
+STRICT REQUIREMENTS:
+- The box must tightly fit ONLY the stamp edges (no background)
+- Do NOT include surrounding postcard area
+- The stamp is typically in the TOP RIGHT corner
+- Ignore writing, addresses, and postmarks outside the stamp
 
 Return STRICT JSON only:
 {
@@ -102,6 +125,8 @@ Return STRICT JSON only:
   "width": <width>,
   "height": <height>
 }
+
+Coordinates must be normalized (0 to 1).
 """
                     },
                     {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
@@ -132,7 +157,7 @@ Return STRICT JSON only:
         print("Stamp detection error:", e)
         return None
 
-from PIL import Image
+from PIL import Image, ImageDraw
 import io
 
 def crop_stamp(image_bytes, bbox):
@@ -164,6 +189,34 @@ def crop_stamp(image_bytes, bbox):
         print("Crop error:", e)
         return None
 
+def draw_bbox(image_bytes, bbox):
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        draw = ImageDraw.Draw(img)
+
+        w, h = img.size
+        x, y, bw, bh = bbox
+
+        left = int(x * w)
+        top = int(y * h)
+        right = int((x + bw) * w)
+        bottom = int((y + bh) * h)
+
+        # draw rectangle (red, thick)
+        for i in range(3):
+            draw.rectangle(
+                [left-i, top-i, right+i, bottom+i],
+                outline="red"
+            )
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG")
+        return base64.b64encode(buffer.getvalue()).decode()
+
+    except Exception as e:
+        print("Draw bbox error:", e)
+        return None
+
 import math
 
 def haversine(lat1, lon1, lat2, lon2):
@@ -190,11 +243,95 @@ HTML = """
 <style>
 body{margin:0;font-family:Georgia;background:#f5ecd9;}
 .wrapper{display:flex;height:100vh;}
-.left{width:26%;padding:30px;background:#efe3c2;}
+.left{
+  width:26%;
+  padding:28px 22px;
+  background: linear-gradient(180deg, #efe3c2, #e6d6af);
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  border-right:1px solid #d8c79c;
+}
 .right{width:74%;padding:30px;overflow-y:auto;}
 
-.logo{width:100%;margin-bottom:10px;}
-.tagline{font-size:14px;color:#5a4d36;margin-bottom:20px;}
+/* --- LOGO --- */
+.logo{
+  width:100%;
+  margin-bottom:6px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+}
+
+.tagline{
+  font-size:13px;
+  color:#6b5c3e;
+  margin-bottom:10px;
+  line-height:1.4;
+}
+
+/* --- NAV SECTION --- */
+.nav-section{
+  margin-top:10px;
+}
+
+
+/* --- BUTTON STYLE --- */
+.nav-btn{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  padding:12px 14px;
+  margin-bottom:10px;
+
+  background:#fffdf6;
+  border:1px solid #e2d3aa;
+  border-radius:10px;
+
+  font-size:14px;
+  font-weight:600;
+  color:#3e3625;
+
+  cursor:pointer;
+  transition: all 0.2s ease;
+}
+
+
+
+/* hover */
+.nav-btn:hover{
+  background:#f7efd9;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+}
+
+/* active press */
+.nav-btn:active{
+  transform: scale(0.98);
+  box-shadow: none;
+}
+
+/* subtle arrow indicator */
+.nav-btn::after{
+  content:"→";
+  font-size:14px;
+  color:#8b6f47;
+  opacity:0.7;
+}
+
+/* --- DIVIDER --- */
+.nav-divider{
+  height:1px;
+  background:#dccb9c;
+  margin:10px 0;
+}
+
+/* --- FOOTER (optional future use) --- */
+.nav-footer{
+  margin-top:auto;
+  font-size:11px;
+  color:#8a7a58;
+  text-align:center;
+}
 
 .upload-bar{display:flex;gap:20px;margin-bottom:25px;}
 
@@ -633,9 +770,135 @@ button{
   color:#3e3625;
 }
 
+
+/* --- GLOBAL FADE-IN --- */
+.fade-in{
+  animation: fadeInUp 0.4s ease forwards;
+}
+
+@keyframes fadeInUp{
+  from{
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to{
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- TAB TRANSITION SMOOTHER --- */
+.tab-content{
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.tab-content.active{
+  opacity:1;
+  transform: translateY(0);
+}
+
+.tab-content:not(.active){
+  transform: translateY(6px);
+}
+
+/* --- CARD HOVER IMPROVEMENT --- */
+.postcard-frame{
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.postcard-frame:hover{
+  transform: scale(1.02);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.12);
+}
+
+.postcard-frame{
+  position: relative; /* REQUIRED for overlay */
+}
+
+.postcard-label{
+  position: absolute;
+  top: 10px;
+  left: 10px;
+
+  background: rgba(255, 253, 246, 0.9);
+  backdrop-filter: blur(4px);
+
+  padding: 4px 10px;
+  border-radius: 6px;
+
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+
+  color: #5a4d36;
+  border: 1px solid #e6d8b5;
+
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+
+  pointer-events: none; /* don’t block clicks */
+}
+
+/* --- STAMP LAYOUT --- */
+.stamp-layout{
+  display:grid;
+  grid-template-columns: 140px 1fr;
+  gap:20px;
+  align-items:start;
+}
+
+/* --- STAMP IMAGE --- */
+.stamp-image{
+  width:140px;
+  height:140px;
+
+  object-fit:cover;
+  object-position: top right;
+
+  border-radius:10px;
+  border:1px solid #e6d8b5;
+  background:#fff;
+
+  padding:8px;
+
+  box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+  transition: transform 0.2s ease;
+}
+
+.stamp-image:hover{
+  transform: scale(1.05);
+}
+
+/* --- STAMP TEXT --- */
+.stamp-body p{
+  margin: 6px 0 12px 0;
+}
+
+.stamp-body{
+  font-size:14px;
+  line-height:1.7;
+  color:#3e3625;
+}
+
+/* better section headers */
+.stamp-section{
+  margin-top:16px;
+  margin-bottom:6px;
+
+  font-size:11px;
+  font-weight:bold;
+  letter-spacing:0.6px;
+  text-transform:uppercase;
+
+  color:#8b6f47;
+
+  border-bottom:1px solid #e6d8b5;
+  padding-bottom:3px;
+}
+
 </style>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-rotatedmarker/leaflet.rotatedMarker.js"></script>
 
 <script>
 const steps=[
@@ -688,6 +951,7 @@ function stopLoader(){
 }
 
 
+
 function previewImage(input,id){
  let file=input.files[0];
  if(!file) return;
@@ -702,7 +966,12 @@ function switchTab(tab){
  document.querySelectorAll(".tab-content").forEach(c=>c.classList.remove("active"));
  document.getElementById("tab-"+tab).classList.add("active");
  document.getElementById("content-"+tab).classList.add("active");
- if(tab==="map"){ setTimeout(initDetailMap,100); }
+ if(tab==="map"){
+  setTimeout(() => {
+    initDetailMap();
+    if(detailMap) detailMap.invalidateSize();
+  }, 200);
+}
 }
 
 
@@ -757,11 +1026,30 @@ function initDetailMap(){
 
     const arcPoints = createArc(from, to);
 
+    // moving marker (postcard travel)
+    const postcardIcon = L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/1048/1048945.png',
+    iconSize: [32, 32],
+    iconAnchor: [16, 16]
+    });
+
+
+    const travelMarker = L.marker(arcPoints[0], {
+    icon: postcardIcon,
+    rotationAngle: 0
+    }).addTo(detailMap);
+
     // start with empty line
     const line = L.polyline([], {
     color: '#8b6f47',
-    weight: 3,
-    opacity: 0.9
+    weight: 4,
+    opacity: 0.8
+    }).addTo(detailMap);
+
+    const glowLine = L.polyline([], {
+    color: '#cbb892',
+    weight: 8,
+    opacity: 0.3
     }).addTo(detailMap);
 
     // animate drawing
@@ -769,12 +1057,34 @@ function initDetailMap(){
     const speed = 30; // lower = faster
 
     function drawLine(){
-    if(i < arcPoints.length){
-        line.addLatLng(arcPoints[i]);
-        i++;
-        setTimeout(drawLine, speed);
+  if(i < arcPoints.length){
+    const point = arcPoints[i];
+
+    // draw line
+    line.addLatLng(point);
+    glowLine.addLatLng(point);
+
+    // rotate marker (AFTER first point)
+    if(i > 0){
+    const prev = arcPoints[i - 1];
+    const angle = Math.atan2(
+    point[0] - prev[0],
+    point[1] - prev[1]
+    ) * (180 / Math.PI);
+
+    // SAFE check
+    if(travelMarker.setRotationAngle){
+        travelMarker.setRotationAngle(angle);
     }
     }
+
+    // move marker
+    travelMarker.setLatLng(point);
+
+    i++;
+    setTimeout(drawLine, speed);
+  }
+}
 
     drawLine();
 
@@ -809,24 +1119,179 @@ function formatStory(text){
 
   sections.forEach(section => {
     const title = section.replace(":", "");
+
     formatted = formatted.replaceAll(
       section,
       `</p><h3>${title}</h3><p>`
     );
   });
 
-  // wrap whole thing safely
+  // wrap safely
   formatted = "<p>" + formatted + "</p>";
 
-  // clean double paragraph breaks
-  formatted = formatted.replace("<p></p>", "")
+  // clean empty paragraphs
+  formatted = formatted.replace(/<p>\s*<\/p>/g, "");
 
   return formatted;
 }
 
 
+function renderPostcardImages(front, back){
+  return `
+    <div class="output-images">
+      <div class="postcard-frame">
+        <div class="postcard-label">Front</div>
+        <img src="data:image/jpeg;base64,${front}" onclick="openModal(this.src)">
+      </div>
+      <div class="postcard-frame">
+        <div class="postcard-label">Back</div>
+        <img src="data:image/jpeg;base64,${back}" onclick="openModal(this.src)">
+      </div>
+    </div>
+  `;
+}
+
+function renderTabs(){
+  return `
+    <div class="tabs">
+      <div class="tab active" id="tab-overview" onclick="switchTab('overview')">Overview</div>
+      <div class="tab" id="tab-story" onclick="switchTab('story')">Story</div>
+      <div class="tab" id="tab-stamp" onclick="switchTab('stamp')">Stamp</div>
+      <div class="tab" id="tab-map" onclick="switchTab('map')">Map</div>
+    </div>
+  `;
+}
+
+function renderOverview(data){
+  return `
+    <div id="content-overview" class="tab-content active">
+      <div class="overview-grid">
+        <div class="overview-item">
+          <div class="overview-label">Sender</div>
+          <div class="overview-value">${data.sender}</div>
+        </div>
+
+        <div class="overview-item">
+          <div class="overview-label">Receiver</div>
+          <div class="overview-value">${data.receiver}</div>
+        </div>
+
+        <div class="overview-item">
+          <div class="overview-label">Location</div>
+          <div class="overview-value">${data.location_sent_from}</div>
+        </div>
+
+        <div class="overview-item">
+          <div class="overview-label">Date</div>
+          <div class="overview-value">${data.date}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderStamp(stamp, image){
+  return `
+    <div id="content-stamp" class="tab-content">
+      <div class="stamp-container">
+        <div class="stamp-title">Stamp Analysis</div>
+
+        <div class="stamp-layout">
+          <img src="data:image/jpeg;base64,${image}"
+            style="width:120px;height:120px;object-fit:cover;
+                   object-position: top right;
+                   border:1px solid #e6d8b5;
+                   border-radius:8px;
+                   padding:6px;
+                   background:#fff;">
+
+          <div class="stamp-body" style="white-space: pre-line; flex:1;">
+            ${stamp}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderImages(front, back){
+  return `
+    <div class="output-images">
+      <div class="postcard-frame">
+        <div class="postcard-label">Front</div>
+        <img src="data:image/jpeg;base64,${front}">
+      </div>
+      <div class="postcard-frame">
+        <div class="postcard-label">Back</div>
+        <img src="data:image/jpeg;base64,${back}">
+      </div>
+    </div>
+  `;
+}
+
+function formatStamp(text){
+  if(!text) return "";
+
+  let cleaned = text;
+
+  // remove markdown artifacts
+  cleaned = cleaned.replace(/###/g, "");
+  cleaned = cleaned.replace(/---/g, "");
+  cleaned = cleaned.replace(/\*\*/g, "");
+
+  // remove intro fluff
+  cleaned = cleaned.replace(/Certainly!.*analysis of the postage stamp.*:/i, "");
+
+  // normalize bullets
+  cleaned = cleaned.replace(/- /g, "");
+
+  // section headers
+  const sections = [
+    "Identification",
+    "Design Details",
+    "Historical Context",
+    "Condition Assessment",
+    "Rarity & Value Insight",
+    "Summary"
+  ];
+
+  sections.forEach(section => {
+    const regex = new RegExp(section + "\\s*:?","gi");
+
+    cleaned = cleaned.replace(
+      regex,
+      `</p><h4 class="stamp-section">${section}</h4><p>`
+    );
+  });
+
+  // wrap paragraphs
+  cleaned = "<p>" + cleaned + "</p>";
+
+  // cleanup empty tags
+  cleaned = cleaned.replace(/<p>\s*<\/p>/g, "");
+
+  return cleaned.trim();
+}
+
 async function submitForm(){
   startLoader();
+
+  // show images immediately for perceived speed
+const frontPreview = document.getElementById("f").innerHTML;
+const backPreview = document.getElementById("b").innerHTML;
+
+document.querySelector(".output").innerHTML = `
+<div class="fade-in">
+    <div class="postcard-frame">
+      <div class="postcard-label">Front</div>
+      ${frontPreview}
+    </div>
+    <div class="postcard-frame">
+      <div class="postcard-label">Back</div>
+      ${backPreview}
+    </div>
+  </div>
+`;
 
   try {
     let fd = new FormData(document.getElementById("uploadForm"));
@@ -855,14 +1320,14 @@ async function submitForm(){
     <div class="output-images">
     <div class="postcard-frame">
         <div class="postcard-label">Front</div>
-        <img src="data:image/jpeg;base64,${data.front}"
+            <img src="data:image/jpeg;base64,${data.front}"
             onclick="openModal(this.src)">
     </div>
     <div class="postcard-frame">
         <div class="postcard-label">Back</div>
-<img src="data:image/jpeg;base64,${data.back}"
-     onclick="openModal(this.src)">
-             </div>
+        <img src="data:image/jpeg;base64,${data.back}"
+            onclick="openModal(this.src)">
+        </div>
     </div>
 
       <div class="tabs">
@@ -914,7 +1379,7 @@ async function submitForm(){
 
     <div style="display:flex; gap:20px; align-items:flex-start;">
 
-            <img src="data:image/jpeg;base64,${data.stamp_image || data.back}"
+            <img class="stamp-image" src="data:image/jpeg;base64,${data.stamp_image || data.back}"
            style="width:120px;height:120px;object-fit:cover;
                   object-position: top right;
                   border:1px solid #e6d8b5;
@@ -923,7 +1388,7 @@ async function submitForm(){
                   background:#fff;">
 
       <div class="stamp-body" style="white-space: pre-line; flex:1;">
-        ${data.stamp}
+        ${formatStamp(data.stamp)}
       </div>
 
     </div>
@@ -1120,7 +1585,7 @@ function loadPostcard(index){
 
       <!-- analysis -->
       <div class="stamp-body" style="white-space: pre-line; flex:1;">
-        ${p.stamp}
+        ${formatStamp(p.stamp)}
       </div>
 
     </div>
@@ -1162,6 +1627,8 @@ function closeModal(){
 
 </script>
 
+
+
 </head>
 <body>
 
@@ -1169,8 +1636,16 @@ function closeModal(){
 <div class="left">
 <img src="/static/logo.png" class="logo">
 <div class="tagline">Preserving history through postcards.</div>
-<div class="history-btn" onclick="openHistory()">View History</div>
-<div class="history-btn" onclick="newAnalysis()">New Analysis</div>
+<div class="nav-section">
+  <div class="nav-btn" onclick="openHistory()">View History</div>
+  <div class="nav-btn" onclick="newAnalysis()">New Analysis</div>
+</div>
+
+<div class="nav-divider"></div>
+
+<div class="nav-footer">
+  v1.0 • Postcard Archaeology
+</div>
 </div>
 
 <div class="right">
@@ -1268,7 +1743,15 @@ def analyze():
         stamp_img = None
 
         if bbox:
+            
+            debug_bbox_img = draw_bbox(b, bbox)   # 👈 ADD THIS
+
             stamp_img = crop_stamp(b, bbox)
+
+            # validate crop result
+            if not stamp_img or len(stamp_img) < 1000:
+                print("Invalid stamp crop, falling back to full image")
+                stamp_img = None
         
         # OCR
         ocr = client.responses.create(
@@ -1329,19 +1812,28 @@ Format:
 
         # STORY
         story = client.responses.create(
-            model="gpt-4.1-mini",
-            input=f"""
-    Write clearly formatted sections:
+        model="gpt-4.1-mini",
+        input=f"""
+    You are a historical analyst interpreting a vintage postcard.
+
+    Write clearly formatted sections using these exact headers:
 
     Context:
     Message Meaning:
     Historical Insight:
     Notable Details:
 
+    Guidelines:
+    - Be specific, not generic
+    - Infer plausible historical and social context when possible
+    - Keep tone natural and engaging (not robotic)
+    - Avoid repeating the text verbatim
+    - Add depth where information is limited (educated inference is encouraged)
+
     TEXT:
     {raw}
     """
-        ).output_text
+    ).output_text
 
         # STAMP
         stamp_resp = client.responses.create(
@@ -1356,31 +1848,34 @@ Format:
 
         Analyze ONLY the postage stamp in this postcard.
 
-        Provide a detailed, expert-level breakdown:
+        Return clean plain text only.
 
-        Identification:
-        - Country of origin
-        - Approximate year or era
-        - Denomination (value)
+    DO NOT include:
+    - markdown
+    - bullet symbols
+    - introductory phrases
 
-        Design Details:
-        - Subject (person, place, symbol)
-        - Colors and artistic style
-        - Printing method (engraved, lithograph, etc if possible)
+    Use this exact structure:
 
-        Historical Context:
-        - Why this stamp was issued
-        - Any notable significance
+    Identification:
+    Country:
+    Year:
+    Denomination:
 
-        Condition Assessment:
-        - Visible wear, fading, or damage
-        - Postmark clarity
+    Design Details:
+    ...
 
-        Rarity & Value Insight:
-        - Common or collectible?
-        - General value range (if known)
+    Historical Context:
+    ...
 
-        Be specific, structured, and authoritative.
+    Condition Assessment:
+    ...
+
+    Rarity & Value Insight:
+    ...
+
+    Summary:
+    ...
         """
                     },
                     {"type":"input_image","image_url":f"data:image/jpeg;base64,{stamp_img or b64}"}                ]
@@ -1424,7 +1919,9 @@ Format:
             "story": story,
             "stamp": stamp,
             "stamp_image": stamp_img,
-            "distance_km": distance_km
+            "distance_km": distance_km,
+            "debug_bbox": debug_bbox_img   # 👈 ADD THIS LINE
+
         })
 
         return jsonify({
