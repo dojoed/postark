@@ -48,9 +48,19 @@ def encode_bytes(b): return base64.b64encode(b).decode()
 import hashlib
 
 
+
 def image_hash(b):
     return hashlib.md5(b).hexdigest()
 
+
+from datetime import datetime
+
+def parse_date_safe(date_str):
+    try:
+        return datetime.strptime(date_str, "%B %d, %Y")
+    except:
+        return datetime.min
+    
 def safe_json(t):
     try:
         if not t:
@@ -74,6 +84,8 @@ def safe_json(t):
         
 def clean_field(val):
     return val if val else "Unable to interpret"
+
+
 
 def geocode(loc):
     try:
@@ -188,6 +200,9 @@ def crop_stamp(image_bytes, bbox):
     except Exception as e:
         print("Crop error:", e)
         return None
+    
+
+
 
 def draw_bbox(image_bytes, bbox):
     try:
@@ -1097,6 +1112,82 @@ function initDetailMap(){
   }
 }
 
+async function openTimeline(){
+  document.getElementById("panel").style.display="block";
+
+  // ONLY load raw history data (no rendering)
+  let historyRes = await fetch("/history");
+  window.historyData = await historyRes.json();
+
+  let res = await fetch("/timeline");
+  let data = await res.json();
+
+  let html = `
+  <div style="
+    display:flex;
+    overflow-x:auto;
+    padding:20px;
+    gap:40px;
+  ">
+  `;
+
+  data.forEach((group) => {
+
+    html += `
+      <div style="min-width:180px; text-align:center;">
+
+        <div style="
+          font-weight:bold;
+          margin-bottom:10px;
+          color:#5a4d36;
+        ">
+          ${group.year}
+        </div>
+
+        <div style="
+          width:12px;
+          height:12px;
+          background:#8b6f47;
+          border-radius:50%;
+          margin:0 auto 12px auto;
+        "></div>
+
+        <div style="
+          display:flex;
+          flex-wrap:wrap;
+          gap:6px;
+          justify-content:center;
+        ">
+    `;
+
+    group.items.forEach((p) => {
+      html += `
+        <img 
+          src="data:image/jpeg;base64,${p.front}"
+          onclick="loadPostcardFromTimeline('${p.hash}')"
+          style="
+            width:60px;
+            height:60px;
+            object-fit:cover;
+            border-radius:6px;
+            cursor:pointer;
+            border:1px solid #e6d8b5;
+          "
+        >
+      `;
+    });
+
+    html += `
+        </div>
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+
+  document.getElementById("panelContent").innerHTML = html;
+}
+
 async function deletePostcard(hash){
   if(!confirm("Delete this postcard?")) return;
 
@@ -1625,6 +1716,46 @@ function closeModal(){
   document.getElementById("imageModal").style.display = "none";
 }
 
+function loadPostcardFromTimeline(hash){
+  const p = window.historyData.find(x => x.hash === hash);
+  if(p){
+    loadPostcard(window.historyData.indexOf(p));
+  }
+}
+
+
+async function clearHistory(){
+  const confirmed = confirm("⚠️ This will permanently delete ALL postcards. Continue?");
+  if(!confirmed) return;
+
+  try {
+    let res = await fetch("/clear", { method: "DELETE" });
+
+    if(!res.ok){
+      console.error("Clear failed:", res.status);
+      alert("Failed to clear history");
+      return;
+    }
+
+    // reset UI state
+    window.historyData = [];
+
+    document.getElementById("panelContent").innerHTML = `
+      <div style="padding:20px;color:#7a6a4f;">
+        No postcards yet.
+      </div>
+    `;
+
+    document.querySelector(".output").innerHTML = "";
+
+    alert("History cleared");
+
+  } catch(e){
+    console.error("Clear error:", e);
+    alert("Unexpected error clearing history");
+  }
+}
+
 </script>
 
 
@@ -1637,8 +1768,10 @@ function closeModal(){
 <img src="/static/logo.png" class="logo">
 <div class="tagline">Preserving history through postcards.</div>
 <div class="nav-section">
-  <div class="nav-btn" onclick="openHistory()">View History</div>
-  <div class="nav-btn" onclick="newAnalysis()">New Analysis</div>
+  <div class="nav-btn" onclick="newAnalysis()">Analyze Postcards</div>
+  <div class="nav-btn" onclick="openHistory()">View My Postcards</div>
+  <div class="nav-btn" onclick="openTimeline()">Postcard Timeline</div>
+  <div class="nav-btn" onclick="clearHistory()">Clear All History</div>
 </div>
 
 <div class="nav-divider"></div>
@@ -1718,6 +1851,50 @@ def delete(hash_value):
 def history():
     data = load_postcards()
     return jsonify(list(reversed(data)))
+
+@app.route("/timeline")
+def timeline():
+    try:
+        data = load_postcards()
+        grouped = {}
+
+        for p in data:
+            pdata = p.get("data") or {}
+            date_str = pdata.get("date") or ""
+
+            dt = parse_date_safe(date_str)
+            year = dt.year if dt.year > 1 else "Unknown"
+
+            if year not in grouped:
+                grouped[year] = []
+
+            # ✅ ONLY send what frontend needs
+            grouped[year].append({
+                "hash": p.get("hash"),
+                "front": p.get("front")
+            })
+
+        timeline_data = [
+            {"year": y, "items": grouped[y]}
+            for y in sorted(grouped.keys(), key=lambda x: str(x))
+        ]
+
+        return jsonify(timeline_data)
+
+    except Exception as e:
+        print("🔥 TIMELINE ERROR:", str(e))
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/clear", methods=["DELETE"])
+def clear_all():
+    try:
+        with open(DATA_FILE, "w") as f:
+            json.dump([], f)
+
+        return jsonify({"status": "cleared"})
+    except Exception as e:
+        print("🔥 CLEAR ERROR:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
