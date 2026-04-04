@@ -2021,30 +2021,7 @@ def clear_all():
         return jsonify({"error": str(e)}), 500
 
 
-from PIL import Image
-import io
 
-def resize_if_needed(img_bytes, max_size=1024):
-    try:
-        img = Image.open(io.BytesIO(img_bytes))
-
-        # Convert to RGB (important for some uploads like PNG with alpha)
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-
-        # Resize if too large
-        if max(img.size) > max_size:
-            img.thumbnail((max_size, max_size))
-
-            buffer = io.BytesIO()
-            img.save(buffer, format="JPEG", quality=90)
-            return buffer.getvalue()
-
-        return img_bytes
-
-    except Exception as e:
-        print("Resize error:", e)
-        return img_bytes
 
 @app.route("/restore", methods=["POST"])
 def restore():
@@ -2055,64 +2032,36 @@ def restore():
         file = request.files["image"]
         img_bytes = file.read()
 
+        # optional resize safeguard
         img_bytes = resize_if_needed(img_bytes)
-        img_b64 = base64.b64encode(img_bytes).decode()
 
-        # ✅ RESTORED API CALL (this was missing)
-        resp = client.responses.create(
-            model="gpt-4.1-mini",
-            input=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": """
+        resp = client.images.edit(
+            model="dall-e-2",
+            image=img_bytes,
+            prompt="""
 Restore this vintage postcard image.
 
-- Remove stains, creases, discoloration
+- Remove stains, folds, discoloration
 - Enhance faded ink and colors
-- Preserve layout and text exactly
-- Do NOT change content
-
-Return ONLY the restored image.
+- Preserve original layout and content
+- Do NOT modernize or alter historical details
 """
-                    },
-                    {
-                        "type": "input_image",
-                        "image_url": f"data:image/jpeg;base64,{img_b64}"
-                    }
-                ]
-            }]
         )
 
-        # 🔍 extract image
-        restored = None
+        restored = resp.data[0].b64_json
 
-        try:
-            for item in resp.output:
-                if hasattr(item, "content"):
-                    for c in item.content:
-                        if c.get("type") == "output_image":
-                            restored = c.get("image_base64")
-        except Exception:
-            print("FULL RESPONSE:", resp)
-
-        # ✅ SAFE fallback (important)
         if not restored:
-            print("⚠️ No image returned — using original")
-            return jsonify({
-                "original": img_b64,
-                "restored": img_b64
-            })
+            return jsonify({"error": "No image returned"}), 500
 
         return jsonify({
-            "original": img_b64,
+            "original": base64.b64encode(img_bytes).decode(),
             "restored": restored
         })
 
     except Exception as e:
         print("🔥 RESTORE ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
+    
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -2137,7 +2086,6 @@ def analyze():
         bbox = detect_stamp_bbox(f64, b64)
         stamp_img = None
 
-        debug_bbox_img = None
         if bbox:
             
             debug_bbox_img = draw_bbox(b, bbox)   # 👈 ADD THIS
