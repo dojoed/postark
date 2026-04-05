@@ -1189,8 +1189,9 @@ async function openTimeline(){
   group.items.forEach((p, i) => {
     html += `
       <img 
+        class="timeline-item"
         src="data:image/jpeg;base64,${p.front}"
-        onclick="loadPostcardFromTimeline('${p.hash}')"
+        onclick="highlightTimeline(this); loadPostcardFromTimeline('${p.hash}')"
         style="
           width:${80 - i*5}px;
           height:${80 - i*5}px;
@@ -1200,11 +1201,11 @@ async function openTimeline(){
           border:1px solid #e6d8b5;
 
           transform: rotate(${(i%2===0? -2:2)}deg);
-          transition: all 0.2s ease;
+          transition: all 0.25s ease;
         "
 
-        onmouseover="this.style.transform='scale(1.1) rotate(0deg)'"
-        onmouseout="this.style.transform='rotate(${(i%2===0? -2:2)}deg)'"
+          onmouseover="if(this.style.opacity !== '1'){ this.style.transform='scale(1.1)' }"
+          onmouseout="if(this.style.opacity !== '1'){ this.style.transform='scale(1)' }"
       >
     `;
   });
@@ -1869,6 +1870,15 @@ function renderAppraisal(text){
   return cleaned;
 }
 
+function highlightTimeline(el){
+  document.querySelectorAll(".timeline-item").forEach(e=>{
+    e.style.opacity = 0.4;
+    e.style.transform = "scale(0.95)";
+  });
+
+  el.style.opacity = 1;
+  el.style.transform = "scale(1.1)";
+}
 
 </script>
 
