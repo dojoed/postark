@@ -1112,46 +1112,7 @@ function initDetailMap(){
   }
 }
 
-async function restoreImage(){
-  const fileInput = document.getElementById("restoreFile");
 
-  if(!fileInput.files.length){
-    alert("Upload an image first");
-    return;
-  }
-
-  const fd = new FormData();
-  fd.append("image", fileInput.files[0]);
-
-  document.getElementById("restoreOutput").innerHTML = "Restoring...";
-
-  try{
-    const res = await fetch("/restore", {
-      method: "POST",
-      body: fd
-    });
-
-    const data = await res.json();
-
-    document.getElementById("restoreOutput").innerHTML = `
-      <div class="output-images">
-        <div class="postcard-frame">
-          <div class="postcard-label">Original</div>
-          <img src="data:image/jpeg;base64,${data.original}">
-        </div>
-
-        <div class="postcard-frame">
-          <div class="postcard-label">Restored</div>
-          <img src="data:image/jpeg;base64,${data.restored}">
-        </div>
-      </div>
-    `;
-  }
-  catch(e){
-    console.error(e);
-    alert("Restore failed");
-  }
-}
 
 async function openTimeline(){
   document.getElementById("panel").style.display="block";
@@ -2019,10 +1980,7 @@ def clear_all():
     except Exception as e:
         print("🔥 CLEAR ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
-
-
-
-
+    
 @app.route("/restore", methods=["POST"])
 def restore():
     try:
@@ -2031,30 +1989,31 @@ def restore():
 
         file = request.files["image"]
         img_bytes = file.read()
+        img_b64 = encode_bytes(img_bytes)
 
-        # optional resize safeguard
-        img_bytes = resize_if_needed(img_bytes)
-
-        resp = client.images.edit(
-            model="dall-e-2",
-            image=img_bytes,
+        # --- RESTORATION PROMPT ---
+        resp = client.images.generate(
+            model="gpt-image-1",
             prompt="""
 Restore this vintage postcard image.
 
-- Remove stains, folds, discoloration
+Goals:
+- Remove stains, creases, discoloration
 - Enhance faded ink and colors
-- Preserve original layout and content
-- Do NOT modernize or alter historical details
-"""
+- Preserve original details and authenticity
+- Do NOT modernize or alter content
+- Keep it historically accurate
+
+Return a clean restored version of the SAME image.
+""",
+            size="1024x1024",
+            image=img_b64
         )
 
         restored = resp.data[0].b64_json
 
-        if not restored:
-            return jsonify({"error": "No image returned"}), 500
-
         return jsonify({
-            "original": base64.b64encode(img_bytes).decode(),
+            "original": img_b64,
             "restored": restored
         })
 
