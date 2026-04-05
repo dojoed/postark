@@ -53,6 +53,42 @@ def image_hash(b):
     return hashlib.md5(b).hexdigest()
 
 
+from PIL import Image, ImageChops
+import io
+
+def auto_crop_postcard(image_bytes):
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+        # Create background (assume corners represent background)
+        bg = Image.new("RGB", img.size, img.getpixel((0, 0)))
+
+        # Find difference
+        diff = ImageChops.difference(img, bg)
+        bbox = diff.getbbox()
+
+        if not bbox:
+            return image_bytes  # nothing to crop
+
+        # --- ADD PADDING ---
+        padding = 20  # pixels (tune 10–40)
+
+        left = max(0, bbox[0] - padding)
+        top = max(0, bbox[1] - padding)
+        right = min(img.size[0], bbox[2] + padding)
+        bottom = min(img.size[1], bbox[3] + padding)
+
+        cropped = img.crop((left, top, right, bottom))
+
+        buffer = io.BytesIO()
+        cropped.save(buffer, format="JPEG")
+
+        return buffer.getvalue()
+
+    except Exception as e:
+        print("Auto-crop error:", e)
+        return image_bytes
+
 from datetime import datetime
 
 def parse_date_safe(date_str):
@@ -60,6 +96,28 @@ def parse_date_safe(date_str):
         return datetime.strptime(date_str, "%B %d, %Y")
     except:
         return datetime.min
+
+from PIL import Image
+import io
+
+def normalize_orientation(image_bytes):
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+
+        width, height = img.size
+
+        # If portrait → rotate to landscape
+        if height > width:
+            img = img.rotate(90, expand=True)
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG")
+
+        return buffer.getvalue()
+
+    except Exception as e:
+        print("Orientation fix error:", e)
+        return image_bytes  # fallback safely
     
 def safe_json(t):
     try:
@@ -2076,8 +2134,8 @@ def analyze():
         if front_file.filename == "" or back_file.filename == "":
             return jsonify({"error": "Empty file upload"}), 400
 
-        f = front_file.read()
-        b = back_file.read()
+        f = auto_crop_postcard(normalize_orientation(front_file.read()))
+        b = auto_crop_postcard(normalize_orientation(back_file.read()))
 
         # ✅ FIX: define these BEFORE using them
         f64 = encode_bytes(f)
