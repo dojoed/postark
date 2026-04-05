@@ -148,10 +148,14 @@ Coordinates must be normalized (0 to 1).
 
         data = safe_json(resp.output_text)
 
-        x = float(data.get("x"))
-        y = float(data.get("y"))
-        w = float(data.get("width"))
-        h = float(data.get("height"))
+        try:
+            x = float(data.get("x"))
+            y = float(data.get("y"))
+            w = float(data.get("width"))
+            h = float(data.get("height"))
+        except (TypeError, ValueError):
+            print("❌ Invalid bbox data:", data)
+            return None
 
         # validate bounds
         if not (0 <= x <= 1 and 0 <= y <= 1 and 0 < w <= 1 and 0 < h <= 1):
@@ -1123,65 +1127,93 @@ async function openTimeline(){
   let data = await res.json();
 
   let html = `
+<div style="
+  display:flex;
+  align-items:flex-start;
+  overflow-x:auto;
+  padding:40px 30px;
+  gap:60px;
+  position:relative;
+">
+
+  <!-- timeline line -->
   <div style="
-    display:flex;
-    overflow-x:auto;
-    padding:20px;
-    gap:40px;
+    position:absolute;
+    top:60px;
+    left:0;
+    right:0;
+    height:3px;
+    background:linear-gradient(90deg,#e6d8b5,#cbb892,#e6d8b5);
+  "></div>
+`;
+
+  data.forEach((group, index) => {
+
+  html += `
+  <div style="
+    min-width:200px;
+    text-align:center;
+    position:relative;
+    z-index:2;
   ">
+
+    <!-- YEAR -->
+    <div style="
+      font-weight:bold;
+      font-size:18px;
+      margin-bottom:12px;
+      color:#5a4d36;
+    ">
+      ${group.year}
+    </div>
+
+    <!-- DOT -->
+    <div style="
+      width:14px;
+      height:14px;
+      background:#8b6f47;
+      border-radius:50%;
+      margin:0 auto 20px auto;
+      box-shadow:0 0 0 4px #f5ecd9;
+    "></div>
+
+    <!-- STACKED CARDS -->
+    <div style="
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:center;
+    ">
   `;
 
-  data.forEach((group) => {
-
+  group.items.forEach((p, i) => {
     html += `
-      <div style="min-width:180px; text-align:center;">
+      <img 
+        src="data:image/jpeg;base64,${p.front}"
+        onclick="loadPostcardFromTimeline('${p.hash}')"
+        style="
+          width:${80 - i*5}px;
+          height:${80 - i*5}px;
+          object-fit:cover;
+          border-radius:8px;
+          cursor:pointer;
+          border:1px solid #e6d8b5;
 
-        <div style="
-          font-weight:bold;
-          margin-bottom:10px;
-          color:#5a4d36;
-        ">
-          ${group.year}
-        </div>
+          transform: rotate(${(i%2===0? -2:2)}deg);
+          transition: all 0.2s ease;
+        "
 
-        <div style="
-          width:12px;
-          height:12px;
-          background:#8b6f47;
-          border-radius:50%;
-          margin:0 auto 12px auto;
-        "></div>
-
-        <div style="
-          display:flex;
-          flex-wrap:wrap;
-          gap:6px;
-          justify-content:center;
-        ">
-    `;
-
-    group.items.forEach((p) => {
-      html += `
-        <img 
-          src="data:image/jpeg;base64,${p.front}"
-          onclick="loadPostcardFromTimeline('${p.hash}')"
-          style="
-            width:60px;
-            height:60px;
-            object-fit:cover;
-            border-radius:6px;
-            cursor:pointer;
-            border:1px solid #e6d8b5;
-          "
-        >
-      `;
-    });
-
-    html += `
-        </div>
-      </div>
+        onmouseover="this.style.transform='scale(1.1) rotate(0deg)'"
+        onmouseout="this.style.transform='rotate(${(i%2===0? -2:2)}deg)'"
+      >
     `;
   });
+
+  html += `
+    </div>
+  </div>
+  `;
+});
 
   html += `</div>`;
 
@@ -2023,6 +2055,8 @@ Return a clean restored version of the SAME image.
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
+        print("🚀 ANALYZE STARTED")
+        print("Files received:", list(request.files.keys()))
         if "front" not in request.files or "back" not in request.files:
             return jsonify({"error": "Missing files"}), 400
 
@@ -2042,18 +2076,24 @@ def analyze():
         # --- STAMP DETECTION + CROP ---
         bbox = detect_stamp_bbox(f64, b64)
         stamp_img = None
+        debug_bbox_img = None  # ✅ ALWAYS define it
 
         if bbox:
+          print("✅ BBOX DETECTED:", bbox)
+
+          debug_bbox_img = draw_bbox(b, bbox)
+
+          stamp_img = crop_stamp(b, bbox)
+
+          if not stamp_img:
+              print("❌ Crop failed")
+              stamp_img = None
+          elif len(stamp_img) < 1000:
+              print("⚠️ Crop too small, ignoring")
+              stamp_img = None
+        else:
+            print("⚠️ No bbox detected")
             
-            debug_bbox_img = draw_bbox(b, bbox)   # 👈 ADD THIS
-
-            stamp_img = crop_stamp(b, bbox)
-
-            # validate crop result
-            if not stamp_img or len(stamp_img) < 1000:
-                print("Invalid stamp crop, falling back to full image")
-                stamp_img = None
-        
         # OCR
         ocr = client.responses.create(
             model="gpt-4.1",
