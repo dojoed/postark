@@ -1040,130 +1040,6 @@ function stopLoader(){
 }
 
 
-function runSearch(){
-  const q = document.getElementById("searchInput").value.toLowerCase();
-
-  const results = (window.historyData || []).filter(p => {
-    const d = p.data || {};
-
-    const haystack = [
-      d.sender,
-      d.receiver,
-      d.location_sent_from,
-      d.location_sent_to,
-      d.date,
-      p.story,
-      p.stamp,
-      p.appraisal
-    ]
-    .join(" ")
-    .toLowerCase();
-
-    return haystack.includes(q);
-  });
-
-  renderSearchResults(results);
-}
-
-function renderSearchResults(results){
-  const container = document.getElementById("searchResults");
-
-  if(!results.length){
-    container.innerHTML = `
-      <div style="color:#7a6a4f;">No matches found.</div>
-    `;
-    return;
-  }
-
-  let html = "";
-
-  results.forEach(p => {
-    html += `
-      <div class="history-card" onclick="loadPostcardFromTimeline('${p.hash}')">
-        <img src="data:image/jpeg;base64,${p.front || ''}">
-
-        <div style="flex:1;">
-          <div style="font-weight:bold;">
-            ${p.data?.sender || "Unknown"}
-          </div>
-
-          <div style="font-size:12px;color:#7a6a4f;">
-            ${p.data?.location_sent_from || "Unknown"} • ${p.data?.date || ""}
-          </div>
-        </div>
-      </div>
-    `;
-  });
-
-  container.innerHTML = html;
-}
-
-
-function initGlobalMap(data){
-  if(!data || data.length === 0){
-    document.getElementById("globalMap").innerHTML = "No postcards yet.";
-    return;
-  }
-
-  const map = L.map('globalMap').setView([20, 0], 2);
-
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png')
-    .addTo(map);
-
-  const bounds = [];
-
-  const postcardIcon = L.icon({
-    iconUrl: '/static/postcard-icon.png',
-    iconSize: [42, 42],
-    iconAnchor: [21, 21]
-  });
-
-  data.forEach(p => {
-    const from = [p.lat_from, p.lon_from];
-    const to = (p.lat_to && p.lon_to) ? [p.lat_to, p.lon_to] : null;
-
-    // --- ORIGIN MARKER ---
-    if(p.lat_from && p.lon_from){
-      const marker = L.marker(from, { icon: postcardIcon }).addTo(map);
-
-      marker.bindPopup(`
-        <div style="text-align:center;">
-          <img src="data:image/jpeg;base64,${p.front}" 
-               style="width:120px;border-radius:6px;margin-bottom:6px;"><br>
-          <b>${p.data?.location_sent_from || "Unknown"}</b><br>
-          <span style="font-size:12px;">${p.data?.date || ""}</span><br><br>
-          <button onclick="loadPostcardFromTimeline('${p.hash}')">
-            View
-          </button>
-        </div>
-      `);
-
-      bounds.push(from);
-    }
-
-    // --- DESTINATION MARKER ---
-    if(to){
-      L.circleMarker(to, {
-        radius: 6,
-        color: "#8b6f47",
-        fillOpacity: 0.7
-      }).addTo(map);
-
-      bounds.push(to);
-
-      // --- LINE ---
-      L.polyline([from, to], {
-        color: "#cbb892",
-        weight: 2,
-        opacity: 0.6
-      }).addTo(map);
-    }
-  });
-
-  if(bounds.length > 0){
-    map.fitBounds(bounds, { padding: [50, 50] });
-  }
-}
 
 function previewImage(input,id){
  let file=input.files[0];
@@ -1241,16 +1117,9 @@ function initDetailMap(){
 
     // moving marker (postcard travel)
     const postcardIcon = L.icon({
-      iconUrl: '/static/postcardicon.jpg',
-
-      // slightly larger for visual impact
-      iconSize: [48, 48],
-
-      // center the icon properly on the path
-      iconAnchor: [24, 24],
-
-      // optional: smoother popup alignment
-      popupAnchor: [0, -20]
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/1048/1048945.png',
+    iconSize: [32, 32],
+    iconAnchor: [16, 16]
     });
 
 
@@ -2081,56 +1950,6 @@ function highlightTimeline(el){
   el.style.transform = "scale(1.1)";
 }
 
-async function openGlobalMap(){
-  document.getElementById("uploadWrapper").classList.add("collapsed");
-
-  document.querySelector(".output").innerHTML = `
-    <div class="fade-in">
-      <h2 style="margin-bottom:10px;">Postcard Map</h2>
-      <div id="globalMap" style="height:600px;border-radius:12px;"></div>
-    </div>
-  `;
-
-  let res = await fetch("/history");
-  let data = await res.json();
-
-  setTimeout(() => initGlobalMap(data), 100);
-}
-
-async function openSearch(){
-  document.getElementById("uploadWrapper").classList.add("collapsed");
-
-  let res = await fetch("/history");
-  window.historyData = await res.json();
-
-  document.querySelector(".output").innerHTML = `
-  <div class="fade-in">
-
-    <h2 style="margin-bottom:12px;">Search Postcards</h2>
-
-    <input 
-      id="searchInput"
-      placeholder="Search by name, location, date, or keyword..."
-      style="
-        width:100%;
-        padding:12px;
-        border-radius:8px;
-        border:1px solid #d8c79c;
-        margin-bottom:20px;
-        font-size:14px;
-      "
-      oninput="runSearch()"
-    >
-
-    <div id="searchResults"></div>
-
-  </div>
-`;
-
-  runSearch();
-}
-
-
 </script>
 
 
@@ -2146,9 +1965,7 @@ async function openSearch(){
   <div class="nav-btn" onclick="newAnalysis()">Analyze Postcards</div>
   <div class="nav-btn" onclick="openHistory()">View My Postcards</div>
   <div class="nav-btn" onclick="openTimeline()">Postcard Timeline</div>
-  <div class="nav-btn" onclick="openGlobalMap()">All Postcards Map</div>
   <div class="nav-btn" onclick="openRestoration()">Restore Postcard</div>
-  <div class="nav-btn" onclick="openSearch()">Search Postcards</div>
   <div class="nav-btn" onclick="clearHistory()">Clear All History</div>
 </div>
 
@@ -2371,11 +2188,10 @@ def analyze():
 
         raw = getattr(ocr, "output_text", None)
 
-        raw = (ocr.output_text or "").strip()
-
         if not raw:
-            print("❌ OCR failed:", ocr)
+            print("OCR RAW RESPONSE:", ocr)
             return jsonify({"error": "OCR returned empty text"}), 500
+
 
         # --- PARSE ---
         parsed = client.responses.create(
@@ -2407,17 +2223,14 @@ Format:
     )
 
         parsed_text = parsed.output_text
-        parsed_data = safe_json(parsed_text)
-
-        if not parsed_data:
-            print("❌ PARSE FAILED:", parsed_text)
+        data = safe_json(parsed_text)
 
         data = {
-            "sender": clean_field(parsed_data.get("sender")),
-            "receiver": clean_field(parsed_data.get("receiver")),
-            "location_sent_from": clean_field(parsed_data.get("location_sent_from")),
-            "location_sent_to": clean_field(parsed_data.get("location_sent_to")),
-            "date": clean_field(parsed_data.get("date"))
+            "sender": clean_field(data.get("sender")),
+            "receiver": clean_field(data.get("receiver")),
+            "location_sent_from": clean_field(data.get("location_sent_from")),
+            "location_sent_to": clean_field(data.get("location_sent_to")),
+            "date": clean_field(data.get("date"))
         }
 
         # STORY
