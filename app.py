@@ -1112,8 +1112,6 @@ function initDetailMap(){
   }
 }
 
-
-
 async function openTimeline(){
   document.getElementById("panel").style.display="block";
 
@@ -2020,7 +2018,7 @@ Return a clean restored version of the SAME image.
     except Exception as e:
         print("🔥 RESTORE ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
-    
+        
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
