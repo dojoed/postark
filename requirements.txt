@@ -1,6 +1,9 @@
-flask
-openai
-python-dotenv
-Pillow
-requests
-gunicorn
+flask==3.0.3
+openai==1.35.13
+python-dotenv==1.0.1
+pillow==10.4.0
+requests==2.32.3
+gunicorn==22.0.0
+
+# Optional but strongly recommended
+pillow-heif==0.16.0
