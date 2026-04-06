@@ -1720,6 +1720,20 @@ document.querySelector(".output").innerHTML = `
             <div class="story-title">Postcard Analysis</div>
             <div class="story-body">
                 ${formatStory(data.story)}
+
+                <div class="story-container" style="margin-top:20px;">
+                  <div class="story-title">Original Message</div>
+                  <div style="
+                    white-space: pre-line;
+                    font-family: 'Courier New', monospace;
+                    background:#f5ecd9;
+                    padding:12px;
+                    border-radius:8px;
+                    font-size:13px;
+                  ">
+                    ${data.raw_text || "No text detected"}
+                  </div>
+                </div>
             </div>
         </div>
       </div>
@@ -1933,6 +1947,20 @@ function loadPostcard(index){
 
     <div id="content-story" class="tab-content">
       <div style="white-space: pre-line;">${p.story}</div>
+    </div>
+
+        <div class="story-container" style="margin-top:20px;">
+      <div class="story-title">Original Message</div>
+      <div style="
+        white-space: pre-line;
+        font-family: monospace;
+        background:#f5ecd9;
+        padding:12px;
+        border-radius:8px;
+        font-size:13px;
+      ">
+        ${p.raw_text || "No text detected"}
+      </div>
     </div>
 
     <div id="content-stamp" class="tab-content">
@@ -2593,6 +2621,7 @@ STORY CONTEXT:
             "back": b64,
             "data": data,
             "story": story,
+            "raw_text": raw,   # 👈 ADD THIS
             "stamp": stamp,
             "stamp_image": stamp_img,
             "distance_km": distance_km,
@@ -2604,6 +2633,7 @@ STORY CONTEXT:
         return jsonify({
             "data": data,
             "story": story,
+            "raw_text": raw,   # 👈 ADD THIS
             "stamp": stamp,
             "front": f64,
             "back": b64,
