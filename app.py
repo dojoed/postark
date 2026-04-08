@@ -1512,14 +1512,14 @@ async function deletePostcard(hash){
 function formatStory(text){
   if(!text) return "";
 
+  let formatted = escapeHtml(text); // 🔥 CRITICAL
+
   const sections = [
     "Context:",
     "Message Meaning:",
     "Historical Insight:",
     "Notable Details:"
   ];
-
-  let formatted = text;
 
   sections.forEach(section => {
     const title = section.replace(":", "");
@@ -1530,10 +1530,7 @@ function formatStory(text){
     );
   });
 
-  // wrap safely
   formatted = "<p>" + formatted + "</p>";
-
-  // clean empty paragraphs
   formatted = formatted.replace(/<p>\s*<\/p>/g, "");
 
   return formatted;
@@ -2771,9 +2768,16 @@ STORY CONTEXT:
             "distance_km": distance_km,
             "stamp_image": stamp_img
         })
+
     except Exception as e:
-        print("🔥 ANALYZE ERROR:", str(e))
-        return jsonify({"error": str(e)}), 500
+        print("🔥 ANALYZE ERROR:")
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({
+            "error": str(e),
+            "type": type(e).__name__
+        }), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5001)
