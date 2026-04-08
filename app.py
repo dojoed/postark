@@ -46,15 +46,24 @@ def save_postcard(entry):
 
     data.append(entry)
 
-    with open(DATA_FILE, "w") as f:
+    tmp_file = DATA_FILE + ".tmp"
+
+    with open(tmp_file, "w") as f:
         json.dump(data, f, indent=2)
+
+    os.replace(tmp_file, DATA_FILE)
 
 def delete_postcard_by_hash(hash_value):
     data = load_postcards()
     data = [p for p in data if p.get("hash") != hash_value]
 
-    with open(DATA_FILE, "w") as f:
+    tmp_file = DATA_FILE + ".tmp"
+
+    with open(tmp_file, "w") as f:
         json.dump(data, f, indent=2)
+
+    os.replace(tmp_file, DATA_FILE)
+
 
 # --- HELPERS ---
 def encode_bytes(b): return base64.b64encode(b).decode()
@@ -729,6 +738,14 @@ button{
   color: #2f281d;
 }
 
+
+
+.history-card:hover{
+  background:#f9f2df;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+
 .history-card{
   display:flex;
   gap:12px;
@@ -738,12 +755,9 @@ button{
   background:#fffdf6;
   border:1px solid #e6d8b5;
   transition: all 0.2s ease;
-}
-
-.history-card:hover{
-  background:#f9f2df;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  opacity:0;
+  transform: translateY(10px);
+  animation: fadeSlideIn 0.4s ease forwards;
 }
 
 .history-card img{
@@ -845,11 +859,7 @@ button{
   box-shadow:0 2px 6px rgba(0,0,0,0.3);
 }
 
-.history-card{
-  opacity:0;
-  transform: translateY(10px);
-  animation: fadeSlideIn 0.4s ease forwards;
-}
+
 
 @keyframes fadeSlideIn{
   to{
@@ -2401,8 +2411,12 @@ def timeline():
 @app.route("/clear", methods=["DELETE"])
 def clear_all():
     try:
-        with open(DATA_FILE, "w") as f:
+        tmp_file = DATA_FILE + ".tmp"
+
+        with open(tmp_file, "w") as f:
             json.dump([], f)
+
+        os.replace(tmp_file, DATA_FILE)
 
         return jsonify({"status": "cleared"})
     except Exception as e:
