@@ -1,7 +1,21 @@
+# --- CORE ---
+import os
+import json
+import base64
+import io
+import math
+import hashlib
+import requests
+
+from datetime import datetime
+
+# --- THIRD PARTY ---
 from flask import Flask, request, jsonify, render_template_string
 from openai import OpenAI
-import os, base64, json, requests
 from dotenv import load_dotenv
+
+# --- IMAGE PROCESSING ---
+from PIL import Image, ImageChops, ImageDraw
 
 # --- SETUP ---
 load_dotenv()
@@ -45,8 +59,6 @@ def delete_postcard_by_hash(hash_value):
 # --- HELPERS ---
 def encode_bytes(b): return base64.b64encode(b).decode()
 
-import hashlib
-
 
 
 def image_hash(b):
@@ -65,8 +77,7 @@ def resize_image(image_bytes, max_dim=1200):
     except:
         return image_bytes
 
-from PIL import Image, ImageChops
-import io
+
 
 def auto_crop_postcard(image_bytes):
     try:
@@ -101,7 +112,6 @@ def auto_crop_postcard(image_bytes):
         print("Auto-crop error:", e)
         return image_bytes
 
-from datetime import datetime
 
 def parse_date_safe(date_str):
     try:
@@ -109,8 +119,6 @@ def parse_date_safe(date_str):
     except:
         return datetime.min
 
-from PIL import Image
-import io
 
 def normalize_orientation(image_bytes):
     try:
@@ -243,8 +251,7 @@ Coordinates must be normalized (0 to 1).
         print("Stamp detection error:", e)
         return None
 
-from PIL import Image, ImageDraw
-import io
+
 
 def crop_stamp(image_bytes, bbox):
     try:
@@ -306,7 +313,6 @@ def draw_bbox(image_bytes, bbox):
         print("Draw bbox error:", e)
         return None
 
-import math
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371  # Earth radius in km
@@ -330,18 +336,40 @@ HTML = """
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
 <style>
-body{margin:0;font-family:Georgia;background:#f5ecd9;}
-.wrapper{display:flex;height:100vh;}
-.left{
-  width:26%;
-  padding:28px 22px;
-  background: linear-gradient(180deg, #efe3c2, #e6d6af);
-  display:flex;
-  flex-direction:column;
-  gap:18px;
-  border-right:1px solid #d8c79c;
+* {
+  box-sizing: border-box;
 }
-.right{width:74%;padding:30px;overflow-y:auto;}
+
+body{margin:0;font-family:Georgia;background:#f5ecd9;}
+.wrapper {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  align-items: stretch;
+}
+
+.left::after {
+  content: "";
+  position: sticky;
+  bottom: 0;
+  height: 30px;
+  display: block;
+  background: linear-gradient(transparent, #e6d6af);
+}
+
+.left {
+  width: 280px;
+  padding: 20px 16px;
+  overflow-y: auto;
+  min-width: 280px;
+  max-width: 280px;
+}
+
+.right {
+  flex: 1;
+  padding: 24px 28px;
+  overflow-y: auto;
+}
 
 /* --- LOGO --- */
 .logo{
@@ -362,49 +390,96 @@ body{margin:0;font-family:Georgia;background:#f5ecd9;}
   margin-top:10px;
 }
 
+/* --- GROUP LABEL --- */
+.nav-group{
+  font-size:10px;
+  font-weight: bold;
+  letter-spacing:0.6px;
+  text-transform:uppercase;
+  color: #a08f6a;
+  margin:14px 0 6px 4px;
+}
 
-/* --- BUTTON STYLE --- */
+/* --- BUTTON --- */
 .nav-btn{
   display:flex;
   align-items:center;
   justify-content:space-between;
-
+  width: 100%;
   padding:12px 14px;
-  margin-bottom:10px;
-
+  margin-bottom:8px;
+  box-shadow: none;
   background:#fffdf6;
   border:1px solid #e2d3aa;
-  border-radius:10px;
+  border-radius:12px;
 
   font-size:14px;
   font-weight:600;
   color:#3e3625;
 
   cursor:pointer;
-  transition: all 0.2s ease;
+
+  transition: all 0.25s ease;
+  position:relative;
 }
 
-
+/* subtle left accent bar */
+.nav-btn::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:0;
+  bottom:0;
+  width:0px;
+  background:#8b6f47;
+  border-radius:12px 0 0 12px;
+  transition: width 0.25s ease;
+}
 
 /* hover */
 .nav-btn:hover{
   background:#f7efd9;
   transform: translateY(-2px);
-  box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.06);
 }
 
-/* active press */
-.nav-btn:active{
-  transform: scale(0.98);
-  box-shadow: none;
+/* hover accent */
+.nav-btn:hover::before{
+  width:4px;
 }
 
-/* subtle arrow indicator */
+/* active (CURRENT PAGE) */
+.nav-btn.active {
+  background: #8b6f47;
+  color: white;
+  border-color: #8b6f47;
+}
+
+.nav-btn.active::after {
+  color: white;
+}
+
+/* arrow */
 .nav-btn::after{
   content:"→";
-  font-size:14px;
+  font-size:13px;
   color:#8b6f47;
-  opacity:0.7;
+  opacity:0.6;
+  transition: transform 0.2s ease;
+}
+
+.nav-btn:hover::after{
+  transform: translateX(3px);
+}
+
+/* danger button */
+.nav-btn.danger{
+  color:#a94442;
+  border-color:#e0b4b4;
+}
+
+.nav-btn.danger:hover{
+  background:#fbeaea;
 }
 
 /* --- DIVIDER --- */
@@ -1039,6 +1114,13 @@ function stopLoader(){
  setTimeout(()=>{document.getElementById("loader").style.display="none";},300);
 }
 
+function setActive(el){
+  document.querySelectorAll(".nav-btn").forEach(b=>{
+    b.classList.remove("active");
+  });
+
+  el.classList.add("active");
+}
 
 function runSearch(){
   const q = document.getElementById("searchInput").value.toLowerCase();
@@ -1950,7 +2032,7 @@ function loadPostcard(index){
     </div>
 
         <div class="story-container" style="margin-top:20px;">
-      <div class="story-title">Original Message</div>
+      <div class="story-title">Origin al Message</div>
       <div style="
         white-space: pre-line;
         font-family: monospace;
@@ -2171,15 +2253,40 @@ async function openSearch(){
 <img src="/static/logo.png" class="logo">
 <div class="tagline">Preserving history through postcards.</div>
 <div class="nav-section">
-  <div class="nav-btn" onclick="newAnalysis()">Analyze Postcards</div>
-  <div class="nav-btn" onclick="openHistory()">View My Postcards</div>
-  <div class="nav-btn" onclick="openTimeline()">Postcard Timeline</div>
-  <div class="nav-btn" onclick="openGlobalMap()">All Postcards Map</div>
-  <div class="nav-btn" onclick="openRestoration()">Restore Postcard</div>
-  <div class="nav-btn" onclick="openSearch()">Search Postcards</div>
-  <div class="nav-btn" onclick="clearHistory()">Clear All History</div>
-</div>
 
+  <div class="nav-group">Main</div>
+
+  <div class="nav-btn active" onclick="setActive(this); newAnalysis()">
+    <span>📮 Analyze Postcards</span>
+  </div>
+
+  <div class="nav-btn" onclick="setActive(this); openHistory()">
+    <span>📚 My Collection</span>
+  </div>
+
+  <div class="nav-btn" onclick="setActive(this); openTimeline()">
+    <span>🕰 Timeline</span>
+  </div>
+
+  <div class="nav-btn" onclick="setActive(this); openGlobalMap()">
+    <span>🗺 Map</span>
+  </div>
+
+  <div class="nav-group">Tools</div>
+
+  <div class="nav-btn" onclick="setActive(this); openRestoration()">
+    <span>✨ Restore</span>
+  </div>
+
+  <div class="nav-btn" onclick="setActive(this); openSearch()">
+    <span>🔎 Search</span>
+  </div>
+
+  <div class="nav-btn danger" onclick="clearHistory()">
+    <span>🗑 Clear History</span>
+  </div>
+
+</div>
 <div class="nav-divider"></div>
 
 <div class="nav-footer">
