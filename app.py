@@ -1,21 +1,7 @@
-# --- CORE ---
-import os
-import json
-import base64
-import io
-import math
-import hashlib
-import requests
-
-from datetime import datetime
-
-# --- THIRD PARTY ---
 from flask import Flask, request, jsonify, render_template_string
 from openai import OpenAI
+import os, base64, json, requests
 from dotenv import load_dotenv
-
-# --- IMAGE PROCESSING ---
-from PIL import Image, ImageChops, ImageDraw
 
 # --- SETUP ---
 load_dotenv()
@@ -46,27 +32,20 @@ def save_postcard(entry):
 
     data.append(entry)
 
-    tmp_file = DATA_FILE + ".tmp"
-
-    with open(tmp_file, "w") as f:
+    with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
-
-    os.replace(tmp_file, DATA_FILE)
 
 def delete_postcard_by_hash(hash_value):
     data = load_postcards()
     data = [p for p in data if p.get("hash") != hash_value]
 
-    tmp_file = DATA_FILE + ".tmp"
-
-    with open(tmp_file, "w") as f:
+    with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
-
-    os.replace(tmp_file, DATA_FILE)
-
 
 # --- HELPERS ---
 def encode_bytes(b): return base64.b64encode(b).decode()
+
+import hashlib
 
 
 
@@ -74,79 +53,13 @@ def image_hash(b):
     return hashlib.md5(b).hexdigest()
 
 
-def resize_image(image_bytes, max_dim=1200):
-    try:
-        img = Image.open(io.BytesIO(image_bytes))
-        img.thumbnail((max_dim, max_dim))
-
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=85)
-
-        return buffer.getvalue()
-    except:
-        return image_bytes
-
-
-
-def auto_crop_postcard(image_bytes):
-    try:
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-
-        # Create background (assume corners represent background)
-        bg = Image.new("RGB", img.size, img.getpixel((0, 0)))
-
-        # Find difference
-        diff = ImageChops.difference(img, bg)
-        bbox = diff.getbbox()
-
-        if not bbox:
-            return image_bytes  # nothing to crop
-
-        # --- ADD PADDING ---
-        padding = 20  # pixels (tune 10–40)
-
-        left = max(0, bbox[0] - padding)
-        top = max(0, bbox[1] - padding)
-        right = min(img.size[0], bbox[2] + padding)
-        bottom = min(img.size[1], bbox[3] + padding)
-
-        cropped = img.crop((left, top, right, bottom))
-
-        buffer = io.BytesIO()
-        cropped.save(buffer, format="JPEG")
-
-        return buffer.getvalue()
-
-    except Exception as e:
-        print("Auto-crop error:", e)
-        return image_bytes
-
+from datetime import datetime
 
 def parse_date_safe(date_str):
     try:
         return datetime.strptime(date_str, "%B %d, %Y")
     except:
         return datetime.min
-
-
-def normalize_orientation(image_bytes):
-    try:
-        img = Image.open(io.BytesIO(image_bytes))
-
-        width, height = img.size
-
-        # If portrait → rotate to landscape
-        if height > width:
-            img = img.rotate(90, expand=True)
-
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG")
-
-        return buffer.getvalue()
-
-    except Exception as e:
-        print("Orientation fix error:", e)
-        return image_bytes  # fallback safely
     
 def safe_json(t):
     try:
@@ -201,19 +114,39 @@ def geocode(loc):
 
 def detect_stamp_bbox(f64, b64):
     try:
-        resp = client.chat.completions.create(
-              model="gpt-4o-mini",
-              messages=[{
-                  "role": "user",
-                  "content": [
-                      {"type": "text", "text": "Locate ONLY the postage stamp. Return JSON with x,y,width,height normalized 0–1."},
-                      {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
-                  ]
-              }]
-          )
+        resp = client.responses.create(
+            model="gpt-4.1",
+            input=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": """
+Locate ONLY the postage stamp on this postcard.
 
-        text = resp.choices[0].message.content
-        data = safe_json(text)
+STRICT REQUIREMENTS:
+- The box must tightly fit ONLY the stamp edges (no background)
+- Do NOT include surrounding postcard area
+- The stamp is typically in the TOP RIGHT corner
+- Ignore writing, addresses, and postmarks outside the stamp
+
+Return STRICT JSON only:
+{
+  "x": <left>,
+  "y": <top>,
+  "width": <width>,
+  "height": <height>
+}
+
+Coordinates must be normalized (0 to 1).
+"""
+                    },
+                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
+                ]
+            }]
+        )
+
+        data = safe_json(resp.output_text)
 
         try:
             x = float(data.get("x"))
@@ -240,7 +173,8 @@ def detect_stamp_bbox(f64, b64):
         print("Stamp detection error:", e)
         return None
 
-
+from PIL import Image, ImageDraw
+import io
 
 def crop_stamp(image_bytes, bbox):
     try:
@@ -302,6 +236,7 @@ def draw_bbox(image_bytes, bbox):
         print("Draw bbox error:", e)
         return None
 
+import math
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371  # Earth radius in km
@@ -325,40 +260,18 @@ HTML = """
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
 <style>
-* {
-  box-sizing: border-box;
-}
-
 body{margin:0;font-family:Georgia;background:#f5ecd9;}
-.wrapper {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
-  align-items: stretch;
+.wrapper{display:flex;height:100vh;}
+.left{
+  width:26%;
+  padding:28px 22px;
+  background: linear-gradient(180deg, #efe3c2, #e6d6af);
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  border-right:1px solid #d8c79c;
 }
-
-.left::after {
-  content: "";
-  position: sticky;
-  bottom: 0;
-  height: 30px;
-  display: block;
-  background: linear-gradient(transparent, #e6d6af);
-}
-
-.left {
-  width: 280px;
-  padding: 20px 16px;
-  overflow-y: auto;
-  min-width: 280px;
-  max-width: 280px;
-}
-
-.right {
-  flex: 1;
-  padding: 24px 28px;
-  overflow-y: auto;
-}
+.right{width:74%;padding:30px;overflow-y:auto;}
 
 /* --- LOGO --- */
 .logo{
@@ -379,96 +292,49 @@ body{margin:0;font-family:Georgia;background:#f5ecd9;}
   margin-top:10px;
 }
 
-/* --- GROUP LABEL --- */
-.nav-group{
-  font-size:10px;
-  font-weight: bold;
-  letter-spacing:0.6px;
-  text-transform:uppercase;
-  color: #a08f6a;
-  margin:14px 0 6px 4px;
-}
 
-/* --- BUTTON --- */
+/* --- BUTTON STYLE --- */
 .nav-btn{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  width: 100%;
+
   padding:12px 14px;
-  margin-bottom:8px;
-  box-shadow: none;
+  margin-bottom:10px;
+
   background:#fffdf6;
   border:1px solid #e2d3aa;
-  border-radius:12px;
+  border-radius:10px;
 
   font-size:14px;
   font-weight:600;
   color:#3e3625;
 
   cursor:pointer;
-
-  transition: all 0.25s ease;
-  position:relative;
+  transition: all 0.2s ease;
 }
 
-/* subtle left accent bar */
-.nav-btn::before{
-  content:"";
-  position:absolute;
-  left:0;
-  top:0;
-  bottom:0;
-  width:0px;
-  background:#8b6f47;
-  border-radius:12px 0 0 12px;
-  transition: width 0.25s ease;
-}
+
 
 /* hover */
 .nav-btn:hover{
   background:#f7efd9;
   transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.08);
 }
 
-/* hover accent */
-.nav-btn:hover::before{
-  width:4px;
+/* active press */
+.nav-btn:active{
+  transform: scale(0.98);
+  box-shadow: none;
 }
 
-/* active (CURRENT PAGE) */
-.nav-btn.active {
-  background: #8b6f47;
-  color: white;
-  border-color: #8b6f47;
-}
-
-.nav-btn.active::after {
-  color: white;
-}
-
-/* arrow */
+/* subtle arrow indicator */
 .nav-btn::after{
   content:"→";
-  font-size:13px;
+  font-size:14px;
   color:#8b6f47;
-  opacity:0.6;
-  transition: transform 0.2s ease;
-}
-
-.nav-btn:hover::after{
-  transform: translateX(3px);
-}
-
-/* danger button */
-.nav-btn.danger{
-  color:#a94442;
-  border-color:#e0b4b4;
-}
-
-.nav-btn.danger:hover{
-  background:#fbeaea;
+  opacity:0.7;
 }
 
 /* --- DIVIDER --- */
@@ -718,14 +584,6 @@ button{
   color: #2f281d;
 }
 
-
-
-.history-card:hover{
-  background:#f9f2df;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-}
-
 .history-card{
   display:flex;
   gap:12px;
@@ -735,9 +593,12 @@ button{
   background:#fffdf6;
   border:1px solid #e6d8b5;
   transition: all 0.2s ease;
-  opacity:0;
-  transform: translateY(10px);
-  animation: fadeSlideIn 0.4s ease forwards;
+}
+
+.history-card:hover{
+  background:#f9f2df;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
 }
 
 .history-card img{
@@ -839,7 +700,11 @@ button{
   box-shadow:0 2px 6px rgba(0,0,0,0.3);
 }
 
-
+.history-card{
+  opacity:0;
+  transform: translateY(10px);
+  animation: fadeSlideIn 0.4s ease forwards;
+}
 
 @keyframes fadeSlideIn{
   to{
@@ -1098,151 +963,13 @@ function startLoader(){
  },900);
 }
 
-function escapeHtml(text){
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 function stopLoader(){
  clearInterval(loaderInterval);
  document.getElementById("bar").style.width="100%";
  setTimeout(()=>{document.getElementById("loader").style.display="none";},300);
 }
 
-function setActive(el){
-  document.querySelectorAll(".nav-btn").forEach(b=>{
-    b.classList.remove("active");
-  });
 
-  el.classList.add("active");
-}
-
-function runSearch(){
-  const q = document.getElementById("searchInput").value.toLowerCase();
-
-  const results = (window.historyData || []).filter(p => {
-    const d = p.data || {};
-
-    const haystack = [
-      d.sender,
-      d.receiver,
-      d.location_sent_from,
-      d.location_sent_to,
-      d.date,
-      p.story,
-      p.stamp,
-      p.appraisal
-    ]
-    .join(" ")
-    .toLowerCase();
-
-    return haystack.includes(q);
-  });
-
-  renderSearchResults(results);
-}
-
-function renderSearchResults(results){
-  const container = document.getElementById("searchResults");
-
-  if(!results.length){
-    container.innerHTML = `
-      <div style="color:#7a6a4f;">No matches found.</div>
-    `;
-    return;
-  }
-
-  let html = "";
-
-  results.forEach(p => {
-    html += `
-      <div class="history-card" onclick="loadPostcardFromTimeline('${p.hash}')">
-        <img src="data:image/jpeg;base64,${p.front || ''}">
-
-        <div style="flex:1;">
-          <div style="font-weight:bold;">
-            ${p.data?.sender || "Unknown"}
-          </div>
-
-          <div style="font-size:12px;color:#7a6a4f;">
-            ${p.data?.location_sent_from || "Unknown"} • ${p.data?.date || ""}
-          </div>
-        </div>
-      </div>
-    `;
-  });
-
-  container.innerHTML = html;
-}
-
-
-function initGlobalMap(data){
-  if(!data || data.length === 0){
-    document.getElementById("globalMap").innerHTML = "No postcards yet.";
-    return;
-  }
-
-  const map = L.map('globalMap').setView([20, 0], 2);
-
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png')
-    .addTo(map);
-
-  const bounds = [];
-
-  const postcardIcon = L.icon({
-    iconUrl: '/static/postcard-icon.png',
-    iconSize: [42, 42],
-    iconAnchor: [21, 21]
-  });
-
-  data.forEach(p => {
-    const from = [p.lat_from, p.lon_from];
-    const to = (p.lat_to && p.lon_to) ? [p.lat_to, p.lon_to] : null;
-
-    // --- ORIGIN MARKER ---
-    if(p.lat_from && p.lon_from){
-      const marker = L.marker(from, { icon: postcardIcon }).addTo(map);
-
-      marker.bindPopup(`
-        <div style="text-align:center;">
-          <img src="data:image/jpeg;base64,${p.front}" 
-               style="width:120px;border-radius:6px;margin-bottom:6px;"><br>
-          <b>${p.data?.location_sent_from || "Unknown"}</b><br>
-          <span style="font-size:12px;">${p.data?.date || ""}</span><br><br>
-          <button onclick="loadPostcardFromTimeline('${p.hash}')">
-            View
-          </button>
-        </div>
-      `);
-
-      bounds.push(from);
-    }
-
-    // --- DESTINATION MARKER ---
-    if(to){
-      L.circleMarker(to, {
-        radius: 6,
-        color: "#8b6f47",
-        fillOpacity: 0.7
-      }).addTo(map);
-
-      bounds.push(to);
-
-      // --- LINE ---
-      L.polyline([from, to], {
-        color: "#cbb892",
-        weight: 2,
-        opacity: 0.6
-      }).addTo(map);
-    }
-  });
-
-  if(bounds.length > 0){
-    map.fitBounds(bounds, { padding: [50, 50] });
-  }
-}
 
 function previewImage(input,id){
  let file=input.files[0];
@@ -1320,16 +1047,9 @@ function initDetailMap(){
 
     // moving marker (postcard travel)
     const postcardIcon = L.icon({
-      iconUrl: '/static/postcardicon.jpg',
-
-      // slightly larger for visual impact
-      iconSize: [48, 48],
-
-      // center the icon properly on the path
-      iconAnchor: [24, 24],
-
-      // optional: smoother popup alignment
-      popupAnchor: [0, -20]
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/1048/1048945.png',
+    iconSize: [32, 32],
+    iconAnchor: [16, 16]
     });
 
 
@@ -1512,14 +1232,14 @@ async function deletePostcard(hash){
 function formatStory(text){
   if(!text) return "";
 
-  let formatted = escapeHtml(text); // 🔥 CRITICAL
-
   const sections = [
     "Context:",
     "Message Meaning:",
     "Historical Insight:",
     "Notable Details:"
   ];
+
+  let formatted = text;
 
   sections.forEach(section => {
     const title = section.replace(":", "");
@@ -1530,7 +1250,10 @@ function formatStory(text){
     );
   });
 
+  // wrap safely
   formatted = "<p>" + formatted + "</p>";
+
+  // clean empty paragraphs
   formatted = formatted.replace(/<p>\s*<\/p>/g, "");
 
   return formatted;
@@ -1796,20 +1519,6 @@ document.querySelector(".output").innerHTML = `
             <div class="story-title">Postcard Analysis</div>
             <div class="story-body">
                 ${formatStory(data.story)}
-
-                <div class="story-container" style="margin-top:20px;">
-                  <div class="story-title">Original Message</div>
-                  <div style="
-                    white-space: pre-line;
-                    font-family: 'Courier New', monospace;
-                    background:#f5ecd9;
-                    padding:12px;
-                    border-radius:8px;
-                    font-size:13px;
-                  ">
-                    ${data.raw_text || "No text detected"}
-                  </div>
-                </div>
             </div>
         </div>
       </div>
@@ -2025,20 +1734,6 @@ function loadPostcard(index){
       <div style="white-space: pre-line;">${p.story}</div>
     </div>
 
-        <div class="story-container" style="margin-top:20px;">
-      <div class="story-title">Origin al Message</div>
-      <div style="
-        white-space: pre-line;
-        font-family: monospace;
-        background:#f5ecd9;
-        padding:12px;
-        border-radius:8px;
-        font-size:13px;
-      ">
-        ${p.raw_text || "No text detected"}
-      </div>
-    </div>
-
     <div id="content-stamp" class="tab-content">
     <div class="stamp-container">
 
@@ -2185,56 +1880,6 @@ function highlightTimeline(el){
   el.style.transform = "scale(1.1)";
 }
 
-async function openGlobalMap(){
-  document.getElementById("uploadWrapper").classList.add("collapsed");
-
-  document.querySelector(".output").innerHTML = `
-    <div class="fade-in">
-      <h2 style="margin-bottom:10px;">Postcard Map</h2>
-      <div id="globalMap" style="height:600px;border-radius:12px;"></div>
-    </div>
-  `;
-
-  let res = await fetch("/history");
-  let data = await res.json();
-
-  setTimeout(() => initGlobalMap(data), 100);
-}
-
-async function openSearch(){
-  document.getElementById("uploadWrapper").classList.add("collapsed");
-
-  let res = await fetch("/history");
-  window.historyData = await res.json();
-
-  document.querySelector(".output").innerHTML = `
-  <div class="fade-in">
-
-    <h2 style="margin-bottom:12px;">Search Postcards</h2>
-
-    <input 
-      id="searchInput"
-      placeholder="Search by name, location, date, or keyword..."
-      style="
-        width:100%;
-        padding:12px;
-        border-radius:8px;
-        border:1px solid #d8c79c;
-        margin-bottom:20px;
-        font-size:14px;
-      "
-      oninput="runSearch()"
-    >
-
-    <div id="searchResults"></div>
-
-  </div>
-`;
-
-  runSearch();
-}
-
-
 </script>
 
 
@@ -2247,40 +1892,13 @@ async function openSearch(){
 <img src="/static/logo.png" class="logo">
 <div class="tagline">Preserving history through postcards.</div>
 <div class="nav-section">
-
-  <div class="nav-group">Main</div>
-
-  <div class="nav-btn active" onclick="setActive(this); newAnalysis()">
-    <span>📮 Analyze Postcards</span>
-  </div>
-
-  <div class="nav-btn" onclick="setActive(this); openHistory()">
-    <span>📚 My Collection</span>
-  </div>
-
-  <div class="nav-btn" onclick="setActive(this); openTimeline()">
-    <span>🕰 Timeline</span>
-  </div>
-
-  <div class="nav-btn" onclick="setActive(this); openGlobalMap()">
-    <span>🗺 Map</span>
-  </div>
-
-  <div class="nav-group">Tools</div>
-
-  <div class="nav-btn" onclick="setActive(this); openRestoration()">
-    <span>✨ Restore</span>
-  </div>
-
-  <div class="nav-btn" onclick="setActive(this); openSearch()">
-    <span>🔎 Search</span>
-  </div>
-
-  <div class="nav-btn danger" onclick="clearHistory()">
-    <span>🗑 Clear History</span>
-  </div>
-
+  <div class="nav-btn" onclick="newAnalysis()">Analyze Postcards</div>
+  <div class="nav-btn" onclick="openHistory()">View My Postcards</div>
+  <div class="nav-btn" onclick="openTimeline()">Postcard Timeline</div>
+  <div class="nav-btn" onclick="openRestoration()">Restore Postcard</div>
+  <div class="nav-btn" onclick="clearHistory()">Clear All History</div>
 </div>
+
 <div class="nav-divider"></div>
 
 <div class="nav-footer">
@@ -2321,7 +1939,7 @@ async function openSearch(){
 <div id="loader" class="loader">
 <div class="loader-box">
 <div class="loader-title">Analyzing your postcard</div>
-<div class="loader-sub">Please wait...</div>
+<div class="loader-sub">Upload front & back images, then click Analyze</div>
 <div id="loaderMessage" style="font-size:13px;color:#7a6a4f;margin-bottom:10px;"></div>
 <div id="steps"></div>
 <div class="progress"><div id="bar" class="bar"></div></div>
@@ -2345,19 +1963,6 @@ async function openSearch(){
 """
 
 # --- ROUTES ---
-
-@app.route("/debug")
-def debug():
-    import openai
-    from openai import OpenAI
-
-    return {
-        "openai_file": openai.__file__,
-        "openai_version": getattr(openai, "__version__", "unknown"),
-        "has_responses": hasattr(OpenAI(), "responses")
-    }
-
-
 @app.route("/")
 def index():
     return render_template_string(HTML)
@@ -2408,12 +2013,8 @@ def timeline():
 @app.route("/clear", methods=["DELETE"])
 def clear_all():
     try:
-        tmp_file = DATA_FILE + ".tmp"
-
-        with open(tmp_file, "w") as f:
+        with open(DATA_FILE, "w") as f:
             json.dump([], f)
-
-        os.replace(tmp_file, DATA_FILE)
 
         return jsonify({"status": "cleared"})
     except Exception as e:
@@ -2475,11 +2076,9 @@ def analyze():
         if front_file.filename == "" or back_file.filename == "":
             return jsonify({"error": "Empty file upload"}), 400
 
-        raw_f = front_file.read()
-        raw_b = back_file.read()
+        f = front_file.read()
+        b = back_file.read()
 
-        f = resize_image(auto_crop_postcard(normalize_orientation(raw_f)))
-        b = resize_image(auto_crop_postcard(normalize_orientation(raw_b)))
         # ✅ FIX: define these BEFORE using them
         f64 = encode_bytes(f)
         b64 = encode_bytes(b)
@@ -2506,33 +2105,29 @@ def analyze():
             print("⚠️ No bbox detected")
             
         # OCR
-        ocr = client.chat.completions.create(
-              model="gpt-4o-mini",
-              messages=[{
-                  "role": "user",
-                  "content": [
-                      {"type": "text", "text": "Transcribe ALL visible text exactly. Preserve line breaks. Include handwriting."},
-                      {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{f64}"}},
-                      {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
-                  ]
-              }]
-          )
+        ocr = client.responses.create(
+            model="gpt-4.1",
+            input=[{"role":"user","content":[
+                {"type":"input_text","text":"Transcribe ALL visible text exactly. Preserve line breaks. Include handwriting."},
+                {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
+                {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
+            ]}]
+        )
 
-        raw = (ocr.choices[0].message.content or "").strip()
+        raw = getattr(ocr, "output_text", None)
 
         if not raw:
-            print("❌ OCR failed:", ocr)
+            print("OCR RAW RESPONSE:", ocr)
             return jsonify({"error": "OCR returned empty text"}), 500
 
+
         # --- PARSE ---
-        parsed_resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": f"""
+        parsed = client.responses.create(
+    model="gpt-4.1",
+    input=f"""
 Extract structured data from the postcard text.
 
-Return STRICT JSON only.
+Return STRICT JSON only. No explanation.
 
 Identify:
 - sender (person writing)
@@ -2542,113 +2137,105 @@ Identify:
 - date
 
 Format:
-{{
-  "sender": "",
-  "receiver": "",
-  "location_sent_from": "",
-  "location_sent_to": "",
-  "date": ""
-}}
+    {{
+    "sender": "",
+    "receiver": "",
+    "location_sent_from": "",
+    "location_sent_to": "",
+    "date": ""
+    }}
 
-TEXT:
-{raw}
-"""
-            }]
-        )
+    TEXT:
+    {raw}
+    """
+    )
 
-        parsed_text = parsed_resp.choices[0].message.content
-        parsed_data = safe_json(parsed_text)
+        parsed_text = parsed.output_text
+        data = safe_json(parsed_text)
 
         data = {
-            "sender": clean_field(parsed_data.get("sender")),
-            "receiver": clean_field(parsed_data.get("receiver")),
-            "location_sent_from": clean_field(parsed_data.get("location_sent_from")),
-            "location_sent_to": clean_field(parsed_data.get("location_sent_to")),
-            "date": clean_field(parsed_data.get("date"))
+            "sender": clean_field(data.get("sender")),
+            "receiver": clean_field(data.get("receiver")),
+            "location_sent_from": clean_field(data.get("location_sent_from")),
+            "location_sent_to": clean_field(data.get("location_sent_to")),
+            "date": clean_field(data.get("date"))
         }
 
         # STORY
-        story = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": f"""
-You are a historical analyst interpreting a vintage postcard.
+        story = client.responses.create(
+        model="gpt-4.1-mini",
+        input=f"""
+    You are a historical analyst interpreting a vintage postcard.
 
-Write clearly formatted sections using these exact headers:
+    Write clearly formatted sections using these exact headers:
 
-Context:
-Message Meaning:
-Historical Insight:
-Notable Details:
+    Context:
+    Message Meaning:
+    Historical Insight:
+    Notable Details:
 
-Guidelines:
-- Be specific, not generic
-- Infer plausible historical and social context when possible
-- Keep tone natural and engaging (not robotic)
-- Avoid repeating the text verbatim
-- Add depth where information is limited (educated inference is encouraged)
+    Guidelines:
+    - Be specific, not generic
+    - Infer plausible historical and social context when possible
+    - Keep tone natural and engaging (not robotic)
+    - Avoid repeating the text verbatim
+    - Add depth where information is limited (educated inference is encouraged)
 
-TEXT:
-{raw}
-"""
-            }]
-        ).choices[0].message.content
+    TEXT:
+    {raw}
+    """
+    ).output_text
 
         # STAMP
-        stamp_resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": [
+        stamp_resp = client.responses.create(
+            model="gpt-4.1",
+            input=[{
+                "role":"user",
+                "content":[
                     {
-                        "type": "text",
+                        "type":"input_text",
                         "text": """
-You are a philatelist (stamp expert).
+        You are a philatelist (stamp expert).
 
-Analyze ONLY the postage stamp in this postcard.
+        Analyze ONLY the postage stamp in this postcard.
 
-Return clean plain text only.
+        Return clean plain text only.
 
-DO NOT include:
-- markdown
-- bullet symbols
-- introductory phrases
+    DO NOT include:
+    - markdown
+    - bullet symbols
+    - introductory phrases
 
-Use this exact structure:
+    Use this exact structure:
 
-Identification:
-Country:
-Year:
-Denomination:
+    Identification:
+    Country:
+    Year:
+    Denomination:
 
-Design Details:
-...
+    Design Details:
+    ...
 
-Historical Context:
-...
+    Historical Context:
+    ...
 
-Condition Assessment:
-...
+    Condition Assessment:
+    ...
 
-Rarity & Value Insight:
-...
+    Rarity & Value Insight:
+    ...
 
-Summary:
-...
-"""
+    Summary:
+    ...
+        """
                     },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{stamp_img or b64}"
-                        }
-                    }
-                ]
+                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{stamp_img or b64}"}                ]
             }]
         )
 
-        stamp = stamp_resp.choices[0].message.content
+        stamp = stamp_resp.output_text.strip()
+        if not stamp or len(stamp) < 5:
+            stamp = "Unable to interpret"
 
         # GEO
         loc_from = data.get("location_sent_from")
@@ -2662,19 +2249,15 @@ Summary:
 
         if loc_to and loc_to != "Unable to interpret":
             lat_to, lon_to = geocode(loc_to)
-
         # --- DISTANCE ---
         distance_km = None
 
         if lat_from and lon_from and lat_to and lon_to:
             distance_km = round(haversine(lat_from, lon_from, lat_to, lon_to), 1)
 
-        # --- APPRAISAL ---
-        appraisal_resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": f"""
+        appraisal_resp = client.responses.create(
+    model="gpt-4.1",
+    input=f"""
 You are an expert in vintage postcard collecting and historical ephemera.
 
 IMPORTANT:
@@ -2697,7 +2280,7 @@ Confidence:
 Low / Medium / High
 
 Postcard Type:
-...
+(e.g. linen era, photo postcard, tourist, holiday, etc.)
 
 Key Value Drivers:
 ...
@@ -2714,6 +2297,12 @@ Collector Appeal:
 Summary:
 ...
 
+Guidelines:
+- Most postcards are low value ($1–$15) unless clearly rare
+- Be conservative and realistic
+- Do NOT overvalue common tourist postcards
+- Only assign higher value if strong justification exists
+
 DATA:
 Sender: {data.get("sender")}
 Location: {data.get("location_sent_from")}
@@ -2728,10 +2317,10 @@ STAMP (secondary signal):
 STORY CONTEXT:
 {story}
 """
-            }]
-        )
+)
 
-        appraisal = appraisal_resp.choices[0].message.content
+
+        appraisal = appraisal_resp.output_text.strip()
 
         # SAVE
         save_postcard({
@@ -2745,18 +2334,17 @@ STORY CONTEXT:
             "back": b64,
             "data": data,
             "story": story,
-            "raw_text": raw,
             "stamp": stamp,
             "stamp_image": stamp_img,
             "distance_km": distance_km,
             "appraisal": appraisal,
-            "debug_bbox": debug_bbox_img
+            "debug_bbox": debug_bbox_img   # 👈 ADD THIS LINE
+
         })
 
         return jsonify({
             "data": data,
             "story": story,
-            "raw_text": raw,
             "stamp": stamp,
             "front": f64,
             "back": b64,
@@ -2768,16 +2356,9 @@ STORY CONTEXT:
             "distance_km": distance_km,
             "stamp_image": stamp_img
         })
-
     except Exception as e:
-        print("🔥 ANALYZE ERROR:")
-        import traceback
-        traceback.print_exc()
-
-        return jsonify({
-            "error": str(e),
-            "type": type(e).__name__
-        }), 500
+        print("🔥 ANALYZE ERROR:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5001)
