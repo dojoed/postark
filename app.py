@@ -2361,6 +2361,19 @@ async function openSearch(){
 """
 
 # --- ROUTES ---
+
+@app.route("/debug")
+def debug():
+    import openai
+    from openai import OpenAI
+
+    return {
+        "openai_file": openai.__file__,
+        "openai_version": getattr(openai, "__version__", "unknown"),
+        "has_responses": hasattr(OpenAI(), "responses")
+    }
+
+
 @app.route("/")
 def index():
     return render_template_string(HTML)
