@@ -201,39 +201,19 @@ def geocode(loc):
 
 def detect_stamp_bbox(f64, b64):
     try:
-        resp = client.responses.create(
-            model="gpt-4.1",
-            input=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": """
-Locate ONLY the postage stamp on this postcard.
+        resp = client.chat.completions.create(
+              model="gpt-4o-mini",
+              messages=[{
+                  "role": "user",
+                  "content": [
+                      {"type": "text", "text": "Locate ONLY the postage stamp. Return JSON with x,y,width,height normalized 0–1."},
+                      {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+                  ]
+              }]
+          )
 
-STRICT REQUIREMENTS:
-- The box must tightly fit ONLY the stamp edges (no background)
-- Do NOT include surrounding postcard area
-- The stamp is typically in the TOP RIGHT corner
-- Ignore writing, addresses, and postmarks outside the stamp
-
-Return STRICT JSON only:
-{
-  "x": <left>,
-  "y": <top>,
-  "width": <width>,
-  "height": <height>
-}
-
-Coordinates must be normalized (0 to 1).
-"""
-                    },
-                    {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}"}
-                ]
-            }]
-        )
-
-        data = safe_json(resp.output_text)
+        text = resp.choices[0].message.content
+        data = safe_json(text)
 
         try:
             x = float(data.get("x"))
@@ -2522,30 +2502,33 @@ def analyze():
             print("⚠️ No bbox detected")
             
         # OCR
-        ocr = client.responses.create(
-            model="gpt-4.1",
-            input=[{"role":"user","content":[
-                {"type":"input_text","text":"Transcribe ALL visible text exactly. Preserve line breaks. Include handwriting."},
-                {"type":"input_image","image_url":f"data:image/jpeg;base64,{f64}"},
-                {"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}"}
-            ]}]
-        )
+        ocr = client.chat.completions.create(
+              model="gpt-4o-mini",
+              messages=[{
+                  "role": "user",
+                  "content": [
+                      {"type": "text", "text": "Transcribe ALL visible text exactly. Preserve line breaks. Include handwriting."},
+                      {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{f64}"}},
+                      {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+                  ]
+              }]
+          )
 
-        raw = getattr(ocr, "output_text", None)
-
-        raw = (ocr.output_text or "").strip()
+        raw = (ocr.choices[0].message.content or "").strip()
 
         if not raw:
             print("❌ OCR failed:", ocr)
             return jsonify({"error": "OCR returned empty text"}), 500
 
         # --- PARSE ---
-        parsed = client.responses.create(
-    model="gpt-4.1",
-    input=f"""
+        parsed_resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": f"""
 Extract structured data from the postcard text.
 
-Return STRICT JSON only. No explanation.
+Return STRICT JSON only.
 
 Identify:
 - sender (person writing)
@@ -2555,24 +2538,22 @@ Identify:
 - date
 
 Format:
-    {{
-    "sender": "",
-    "receiver": "",
-    "location_sent_from": "",
-    "location_sent_to": "",
-    "date": ""
-    }}
+{{
+  "sender": "",
+  "receiver": "",
+  "location_sent_from": "",
+  "location_sent_to": "",
+  "date": ""
+}}
 
-    TEXT:
-    {raw}
-    """
-    )
+TEXT:
+{raw}
+"""
+            }]
+        )
 
-        parsed_text = parsed.output_text
+        parsed_text = parsed_resp.choices[0].message.content
         parsed_data = safe_json(parsed_text)
-
-        if not parsed_data:
-            print("❌ PARSE FAILED:", parsed_text)
 
         data = {
             "sender": clean_field(parsed_data.get("sender")),
@@ -2583,80 +2564,87 @@ Format:
         }
 
         # STORY
-        story = client.responses.create(
-        model="gpt-4.1-mini",
-        input=f"""
-    You are a historical analyst interpreting a vintage postcard.
+        story = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": f"""
+You are a historical analyst interpreting a vintage postcard.
 
-    Write clearly formatted sections using these exact headers:
+Write clearly formatted sections using these exact headers:
 
-    Context:
-    Message Meaning:
-    Historical Insight:
-    Notable Details:
+Context:
+Message Meaning:
+Historical Insight:
+Notable Details:
 
-    Guidelines:
-    - Be specific, not generic
-    - Infer plausible historical and social context when possible
-    - Keep tone natural and engaging (not robotic)
-    - Avoid repeating the text verbatim
-    - Add depth where information is limited (educated inference is encouraged)
+Guidelines:
+- Be specific, not generic
+- Infer plausible historical and social context when possible
+- Keep tone natural and engaging (not robotic)
+- Avoid repeating the text verbatim
+- Add depth where information is limited (educated inference is encouraged)
 
-    TEXT:
-    {raw}
-    """
-    ).output_text
+TEXT:
+{raw}
+"""
+            }]
+        ).choices[0].message.content
 
         # STAMP
-        stamp_resp = client.responses.create(
-            model="gpt-4.1",
-            input=[{
-                "role":"user",
-                "content":[
+        stamp_resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": [
                     {
-                        "type":"input_text",
+                        "type": "text",
                         "text": """
-        You are a philatelist (stamp expert).
+You are a philatelist (stamp expert).
 
-        Analyze ONLY the postage stamp in this postcard.
+Analyze ONLY the postage stamp in this postcard.
 
-        Return clean plain text only.
+Return clean plain text only.
 
-    DO NOT include:
-    - markdown
-    - bullet symbols
-    - introductory phrases
+DO NOT include:
+- markdown
+- bullet symbols
+- introductory phrases
 
-    Use this exact structure:
+Use this exact structure:
 
-    Identification:
-    Country:
-    Year:
-    Denomination:
+Identification:
+Country:
+Year:
+Denomination:
 
-    Design Details:
-    ...
+Design Details:
+...
 
-    Historical Context:
-    ...
+Historical Context:
+...
 
-    Condition Assessment:
-    ...
+Condition Assessment:
+...
 
-    Rarity & Value Insight:
-    ...
+Rarity & Value Insight:
+...
 
-    Summary:
-    ...
-        """
+Summary:
+...
+"""
                     },
-                    {"type":"input_image","image_url":f"data:image/jpeg;base64,{stamp_img or b64}"}                ]
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{stamp_img or b64}"
+                        }
+                    }
+                ]
             }]
         )
 
-        stamp = stamp_resp.output_text.strip()
-        if not stamp or len(stamp) < 5:
-            stamp = "Unable to interpret"
+        stamp = stamp_resp.choices[0].message.content
 
         # GEO
         loc_from = data.get("location_sent_from")
@@ -2670,15 +2658,19 @@ Format:
 
         if loc_to and loc_to != "Unable to interpret":
             lat_to, lon_to = geocode(loc_to)
+
         # --- DISTANCE ---
         distance_km = None
 
         if lat_from and lon_from and lat_to and lon_to:
             distance_km = round(haversine(lat_from, lon_from, lat_to, lon_to), 1)
 
-        appraisal_resp = client.responses.create(
-    model="gpt-4.1",
-    input=f"""
+        # --- APPRAISAL ---
+        appraisal_resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": f"""
 You are an expert in vintage postcard collecting and historical ephemera.
 
 IMPORTANT:
@@ -2701,7 +2693,7 @@ Confidence:
 Low / Medium / High
 
 Postcard Type:
-(e.g. linen era, photo postcard, tourist, holiday, etc.)
+...
 
 Key Value Drivers:
 ...
@@ -2718,12 +2710,6 @@ Collector Appeal:
 Summary:
 ...
 
-Guidelines:
-- Most postcards are low value ($1–$15) unless clearly rare
-- Be conservative and realistic
-- Do NOT overvalue common tourist postcards
-- Only assign higher value if strong justification exists
-
 DATA:
 Sender: {data.get("sender")}
 Location: {data.get("location_sent_from")}
@@ -2738,10 +2724,10 @@ STAMP (secondary signal):
 STORY CONTEXT:
 {story}
 """
-)
+            }]
+        )
 
-
-        appraisal = appraisal_resp.output_text.strip()
+        appraisal = appraisal_resp.choices[0].message.content
 
         # SAVE
         save_postcard({
@@ -2755,19 +2741,18 @@ STORY CONTEXT:
             "back": b64,
             "data": data,
             "story": story,
-            "raw_text": raw,   # 👈 ADD THIS
+            "raw_text": raw,
             "stamp": stamp,
             "stamp_image": stamp_img,
             "distance_km": distance_km,
             "appraisal": appraisal,
-            "debug_bbox": debug_bbox_img   # 👈 ADD THIS LINE
-
+            "debug_bbox": debug_bbox_img
         })
 
         return jsonify({
             "data": data,
             "story": story,
-            "raw_text": raw,   # 👈 ADD THIS
+            "raw_text": raw,
             "stamp": stamp,
             "front": f64,
             "back": b64,
