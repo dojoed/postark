@@ -1098,6 +1098,13 @@ function startLoader(){
  },900);
 }
 
+function escapeHtml(text){
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function stopLoader(){
  clearInterval(loaderInterval);
  document.getElementById("bar").style.width="100%";
